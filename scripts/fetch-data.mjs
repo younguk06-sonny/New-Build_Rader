@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchSeries, fetchByFirstClass, search, call as kosisCall, meta as kosisMeta } from '../lib/kosis.mjs';
 import { KOSIS_SOURCES, SUPPLY_SOURCES, POPULATION_SOURCE } from '../lib/sources.mjs';
+import { REGION_TABLES, monthlySeries, ageProfile } from '../lib/regionstats.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
 import { parseRegion } from '../lib/region.mjs';
 import { getJSON, pool } from '../lib/http.mjs';
@@ -111,26 +112,27 @@ if (process.env.KOSIS_KEY) {
   }
   await writeJSON(path.join(OUT, 'supply-index.json'), { list: supplyList, labels: Object.fromEntries(Object.entries(SUPPLY_SOURCES).map(([k, v]) => [k, v.label])) });
 
-  // [탐색 2] 거래량 표 구조 + 여러 지역코드 한 번에 요청('+' 구분) 되는지 확인
-  meta.discover = { probe: {}, prd: {}, sample: {} };
-  for (const [org, tbl] of [['408', 'DT_408_2006_S0064'], ['408', 'DT_408_2006_S0057']]) {
+  // 지역 여건: 아파트·주택 매매 거래량, 인구, 세대수(최근 60개월) + 최신 연령 분포
+  delete meta.discover;
+  const rs = { fetchedAt: new Date().toISOString(), series: {}, age: null };
+  meta.regionStats = {};
+  for (const [name, src] of Object.entries(REGION_TABLES)) {
     try {
-      const it = await kosisMeta({ orgId: org, tblId: tbl }, 'ITM');
-      const objs = {};
-      for (const r of it) { const k = r.OBJ_ID + ' ' + (r.OBJ_NM || ''); (objs[k] ||= []).push(`${r.ITM_ID}:${r.ITM_NM}`); }
-      meta.discover.probe[tbl] = Object.fromEntries(Object.entries(objs).map(([k, v]) => [k, `${v.length}개: ${v.slice(0, 25).join(', ')}`]));
-    } catch (e) { meta.discover.probe[tbl] = 'error: ' + e.message; }
-    try { meta.discover.prd[tbl] = (await kosisMeta({ orgId: org, tblId: tbl }, 'PRD')).slice(0, 5); } catch (e) { meta.discover.prd[tbl] = 'error: ' + e.message; }
+      const d = await monthlySeries(src, VALID, 60);
+      rs.series[name] = d;
+      const missing = [];
+      for (const [sd, set] of Object.entries(VALID)) for (const n of set) if (!d.sgg[sd]?.[n] && !(sd === '세종' && d.sido['세종'])) missing.push(sd + ' ' + n);
+      meta.regionStats[name] = { ok: true, tbl: src.tblId, item: d.itm, from: d.months[0], to: d.months.at(-1), regions: d.regions, missingCount: missing.length, missing: missing.slice(0, 20) };
+      log('지역여건', name, d.months[0], '~', d.months.at(-1), '빠짐', missing.length);
+    } catch (e) { errors.push(`지역여건 ${name}: ${e.message}`); meta.regionStats[name] = { ok: false, tbl: src.tblId, error: e.message }; }
   }
   try {
-    const rows = await kosisCall({ orgId: '101', tblId: 'DT_1B040B3' }, { prdSe: 'M', newEstPrdCnt: '2', objL1: '11+11110+41110' });
-    meta.discover.sample.multi = rows.slice(0, 6).map((r) => [r.C1, r.C1_NM, r.ITM_NM, r.PRD_DE, r.DT]);
-  } catch (e) { meta.discover.sample.multi = 'error: ' + e.message; }
-  try {
-    const it = await kosisMeta({ orgId: '101', tblId: 'DT_1B04005N' }, 'ITM');
-    meta.discover.sample.ageCodes = it.filter((r) => r.OBJ_ID !== 'ITEM').slice(0, 8).map((r) => [r.OBJ_ID, r.ITM_ID, r.ITM_NM, r.UP_ITM_ID]);
-    meta.discover.sample.ageItems = it.filter((r) => r.OBJ_ID === 'ITEM').map((r) => [r.ITM_ID, r.ITM_NM]);
-  } catch (e) { meta.discover.sample.ageCodes = 'error: ' + e.message; }
+    rs.age = await ageProfile(VALID);
+    const nS = Object.values(rs.age.sgg).reduce((a, o) => a + Object.keys(o).length, 0);
+    meta.regionStats.age = { ok: true, month: rs.age.month, groups: rs.age.groups.length, sgg: nS };
+    log('연령', rs.age.month, '시·군·구', nS);
+  } catch (e) { errors.push('연령: ' + e.message); meta.regionStats.age = { ok: false, error: e.message }; }
+  if (Object.keys(rs.series).length || rs.age) await writeJSON(path.join(OUT, 'region-stats.json'), rs);
 
   // 인구: 최신 1개월, 시·도와 시·군·구별 총인구
   try {
