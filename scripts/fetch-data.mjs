@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { fetchSeries, fetchByFirstClass, search, call as kosisCall, meta as kosisMeta } from '../lib/kosis.mjs';
 import { KOSIS_SOURCES, SUPPLY_SOURCES, POPULATION_SOURCE } from '../lib/sources.mjs';
 import { REGION_TABLES, monthlySeries, ageProfile } from '../lib/regionstats.mjs';
+import { collectTrades, buildTradeView } from '../lib/trade.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
 import { parseRegion } from '../lib/region.mjs';
 import { getJSON, pool } from '../lib/http.mjs';
@@ -262,6 +263,21 @@ if (key) {
   } catch (e) { errors.push('청약: ' + e.message); meta.cheongyak = { ...(meta.cheongyak || {}), ok: false, error: e.message }; }
 } else {
   log('DATA_GO_KR_KEY 없음 — 청약 건너뜀');
+}
+
+/* ---------- 국토교통부 아파트 매매 실거래가 ---------- */
+if (process.env.DATA_GO_KR_KEY) {
+  try {
+    const codes = await readJSON(path.join(ROOT, 'lib', 'lawd-codes.json'), {});
+    const r = await collectTrades({ root: ROOT, codes, log });
+    if (r.months) {
+      const view = buildTradeView(r);
+      await writeJSON(path.join(OUT, 'trade.json'), { source: '국토교통부 아파트 매매 실거래가(공공데이터포털)', fetchedAt: new Date().toISOString(), complete: r.complete, ...view });
+    }
+    meta.trade = { ok: r.ok, error: r.error || undefined, complete: r.complete, done: r.done, fails: r.fails, remaining: r.remaining, callsToday: r.callsToday };
+    log('실거래가', meta.trade);
+    if (r.error) errors.push('실거래가: ' + r.error);
+  } catch (e) { errors.push('실거래가: ' + e.message); meta.trade = { ok: false, error: e.message }; }
 }
 
 await writeJSON(path.join(OUT, 'meta.json'), meta);

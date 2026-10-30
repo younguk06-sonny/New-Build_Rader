@@ -558,18 +558,28 @@ function renderCrumb() {
 /* ---------- 차트 ---------- */
 function niceMax(v) { if (v <= 0) return 10; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
 
-function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호', extremes = false, xTick = null } = {}) {
+function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호', extremes = false, xTick = null, fit = false } = {}) {
   const W = Math.max(280, el.clientWidth || 600), H = height;
   const m = { l: 44, r: 10, t: extremes ? 30 : 12, b: 24 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
   const n = vals.length;
-  const max = niceMax(Math.max(1, ...vals.filter((v) => v != null)));
+  const ok = vals.filter((v) => v != null);
+  let lo = 0, max = niceMax(Math.max(1, ...ok)), ticks = [0, 1, 2, 3, 4].map((k) => max * k / 4);
+  if (fit && ok.length) {
+    // 세로축을 실제 값 범위에 맞춤(인구·가격처럼 0에서 먼 값) — 눈금은 1·2·2.5·5 단위
+    const a = Math.min(...ok), b = Math.max(...ok), span = Math.max(b - a, b * 0.02);
+    const raw = span * 1.5 / 4, p10 = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p10;
+    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p10;
+    lo = Math.max(0, Math.floor((a - span * 0.2) / step) * step); max = Math.ceil((b + span * 0.2) / step) * step;
+    ticks = []; for (let t = lo; t <= max + step / 2; t += step) ticks.push(t);
+  }
+  const tickLabel = (v) => v >= 10000 ? `${parseFloat((v / 10000).toFixed(2))}만` : fmt(v);
   const x = (i) => m.l + (type === 'bar' ? (i + 0.5) * iw / n : (n === 1 ? iw / 2 : i * iw / (n - 1)));
-  const y = (v) => m.t + ih - v / max * ih;
+  const y = (v) => m.t + ih - (v - lo) / (max - lo) * ih;
   let g = '<g class="grid">';
-  for (let k = 0; k <= 4; k++) { const v = max * k / 4, yy = y(v); g += `<line x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}"/>`; }
+  for (const v of ticks) { const yy = y(v); g += `<line x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}"/>`; }
   g += '</g><g class="axis">';
-  for (let k = 0; k <= 4; k++) { const v = max * k / 4; g += `<text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end">${v >= 10000 ? (v / 10000).toFixed(v % 10000 ? 1 : 0) + '만' : fmt(v)}</text>`; }
+  for (const v of ticks) g += `<text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end">${tickLabel(v)}</text>`;
   if (xTick) {
     // 정해진 달에만 눈금(예: 6개월·1년 단위)
     for (let i = 0; i < n; i++) { const t = xTick(months[i]); if (t) g += `<line class="xt" x1="${x(i)}" x2="${x(i)}" y1="${m.t + ih}" y2="${m.t + ih + 4}"/><text x="${x(i)}" y="${H - 6}" text-anchor="middle">${t}</text>`; }
@@ -582,7 +592,7 @@ function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호'
   if (type === 'line') {
     let d = '', a = '', started = false, first = null, lastX = null;
     vals.forEach((v, i) => { if (v == null) { started = false; return; } d += (started ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1); if (first == null) first = i; lastX = i; started = true; });
-    if (first != null) { a = d.replace(/^M/, 'M') + `L${x(lastX).toFixed(1)},${y(0)}L${x(first).toFixed(1)},${y(0)}Z`; }
+    if (first != null) { a = d.replace(/^M/, 'M') + `L${x(lastX).toFixed(1)},${y(lo)}L${x(first).toFixed(1)},${y(lo)}Z`; }
     body = `<path class="ar" d="${a}"/><path class="ln" d="${d}"/>`;
     const li = vals.length - 1; if (vals[li] != null) body += `<circle class="dot" cx="${x(li)}" cy="${y(vals[li])}" r="4"/>`;
     if (extremes) {
@@ -787,8 +797,8 @@ function renderRegion() {
     $('#rsPop').innerHTML = `<div class="sub-h"><span>인구 · 세대수 <span class="muted">${esc(place)} · ${fmtM(m0)} → ${fmtM((pop || hh).months.at(-1))}</span></span></div>
       <div class="rs-kpis"><div><span class="k">인구</span><b>${pn}</b><span class="${pc.c}">5년 ${pc.t}</span></div><div><span class="k">세대수</span><b>${hn}</b><span class="${hc.c}">5년 ${hc.t}</span></div><div><span class="k">세대당 인구</span><b>${per ? per + '명' : '–'}</b></div></div>
       <div class="rs-two"><div><div class="mini-h">인구</div><div class="chart" id="popChart"></div></div><div><div class="mini-h">세대수</div><div class="chart" id="hhChart"></div></div></div>`;
-    if (pop) drawChart($('#popChart'), pop.months, pop.vals, { height: 140, unit: '명', xTick: yearTick, extremes: true });
-    if (hh) drawChart($('#hhChart'), hh.months, hh.vals, { height: 140, unit: '세대', xTick: yearTick, extremes: true });
+    if (pop) drawChart($('#popChart'), pop.months, pop.vals, { height: 140, unit: '명', xTick: yearTick, extremes: true, fit: true });
+    if (hh) drawChart($('#hhChart'), hh.months, hh.vals, { height: 140, unit: '세대', xTick: yearTick, extremes: true, fit: true });
   } else $('#rsPop').innerHTML = '';
   // 3) 연령 분포
   const A = S.rs.age;
@@ -809,6 +819,56 @@ function renderRegion() {
       <p class="note">행정안전부 주민등록인구(5세별). 평균 연령은 5세 구간의 가운데 값으로 계산한 추정치입니다.</p>`;
   } else $('#rsAge').innerHTML = '';
   $('#rsMeta').textContent = S.rs.fetchedAt ? `자료 수집 ${S.rs.fetchedAt.slice(0, 10)}` : '';
+}
+
+/* ---------- 아파트 실거래가 (국토교통부) ---------- */
+function fmtWon(man) { // 만원 → '8억 2,500' / '9,800만'
+  if (man == null) return '–';
+  const e = Math.floor(man / 10000), r = Math.round(man % 10000);
+  return e ? `${e}억${r ? ' ' + r.toLocaleString('ko-KR') : ''}` : `${r.toLocaleString('ko-KR')}만`;
+}
+function tradeOf() {
+  const T = S.trade; if (!T) return null;
+  const { sido, sgg } = S.sel;
+  if (sgg) return { v: T.sgg?.[sido]?.[sgg], level: 'sgg' };
+  if (sido) return { v: T.sido?.[sido], level: 'sido' };
+  return { v: T.nat, level: 'nat' };
+}
+function renderTrade() {
+  const el = $('#trBody'), T = S.trade;
+  if (!T) { el.innerHTML = `<div class="empty">${window.PREVIEW ? '미리보기에는 실거래가 자료가 들어 있지 않습니다.' : '실거래가 자료를 아직 받지 못했습니다. 공공데이터포털에서 <b>국토교통부_아파트 매매 실거래가 자료</b>를 활용신청하면 다음 자동 수집부터 채워집니다.'}</div>`; $('#trMeta').textContent = ''; return; }
+  const place = S.sel.sgg || S.sel.sido || '전국';
+  const t = tradeOf(); const v = t?.v;
+  $('#trMeta').textContent = `${T.complete < 100 ? `3년치 채우는 중 ${T.complete}% · ` : ''}수집 ${String(T.fetchedAt || '').slice(0, 10)}`;
+  if (!v) { el.innerHTML = `<div class="empty">${esc(place)}의 실거래 자료가 아직 없습니다.</div>`; return; }
+  const M = T.months, last3 = (arr) => { const xs = arr.slice(-3).filter((x) => x != null); return xs.length ? xs : null; };
+  const avg = (xs) => xs ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  const sum = (arr, a, b) => { let t = null; for (let i = a; i < b; i++) if (i >= 0 && arr[i] != null) t = (t || 0) + arr[i]; return t; };
+  const n12 = sum(v.n, M.length - 12, M.length), n12p = sum(v.n, M.length - 24, M.length - 12), cn = chg(n12, n12p);
+  const py3 = avg(last3(v.py)), py3p = avg(v.py.slice(-15, -12).filter((x) => x != null)), cp = chg(py3, py3p);
+  const amt3 = avg(last3(v.amt));
+  el.innerHTML = `
+    <div class="rs-kpis">
+      <div><span class="k">중위 거래가 (최근 3개월)</span><b>${fmtWon(amt3 && Math.round(amt3))}</b></div>
+      <div><span class="k">평당 가격 (3.3㎡)</span><b>${py3 ? fmt(py3) + '만' : '–'}</b><span class="${cp.c}">1년 전 대비 ${py3 && py3p ? ((py3 >= py3p ? '+' : '−') + Math.abs((py3 / py3p - 1) * 100).toFixed(1) + '%') : '–'}</span></div>
+      <div><span class="k">거래 건수 (최근 12개월)</span><b>${fmt(n12)}건</b><span class="${cn.c}">${cn.t}</span></div>
+    </div>
+    <div class="mini-h">평당 가격 추이 <span class="muted">(중위값, 만원/3.3㎡)</span></div>
+    <div class="chart" id="trPy"></div>
+    <div class="mini-h" style="margin-top:6px">월별 거래 건수</div>
+    <div class="chart" id="trN"></div>
+    <div id="trList"></div>
+    <p class="note">국토교통부 실거래가 공개시스템과 같은 자료(공공데이터포털 API)입니다. 계약일 기준이며 신고 기한(30일) 때문에 최근 1~2개월은 계속 늘어납니다. 해제된 거래는 제외했습니다.</p>`;
+  const tick6 = (m) => (m.slice(4) === '01' || m.slice(4) === '07' ? `${m.slice(2, 4)}.${m.slice(4)}` : null);
+  drawChart($('#trPy'), M, v.py, { height: 160, unit: '만', extremes: true, xTick: tick6, fit: true });
+  drawChart($('#trN'), M, v.n, { type: 'bar', height: 110, unit: '건', xTick: tick6 });
+  // 최근 거래 목록 (시·군·구를 골랐을 때)
+  const { sido, sgg } = S.sel;
+  const list = sgg ? T.recent?.[sido]?.[sgg] : null;
+  $('#trList').innerHTML = list && list.length ? `<div class="sub-h" style="margin-top:14px">최근 실거래 <span class="muted">${esc(sgg)} · ${list.length}건</span></div>
+    <div class="tr-wrap"><table class="tr-table"><thead><tr><th>계약일</th><th>단지</th><th>전용</th><th>층</th><th class="r">거래가</th></tr></thead><tbody>
+    ${list.map((d) => `<tr><td>${d[0].slice(2, 4)}.${d[0].slice(4, 6)}.${d[0].slice(6, 8)}</td><td><b>${esc(d[1])}</b><span class="muted"> ${esc(d[2])}</span></td><td>${d[3]}㎡</td><td>${d[4] ?? ''}</td><td class="r"><b>${fmtWon(d[5])}</b></td></tr>`).join('')}
+    </tbody></table></div>` : (sgg ? '' : '<p class="note">시·군·구를 고르면 최근 실거래 목록이 나옵니다.</p>');
 }
 
 /* ---------- 청약 결과 ---------- */
@@ -903,7 +963,7 @@ function select(sido, sgg, { push = true } = {}) {
   // 주소창에 지역 기록(공유용). 미리보기처럼 막힌 환경에서는 조용히 건너뜀
   if (push && !window.NO_HASH) { try { const h = sido ? '#' + encodeURIComponent(sido) + (sgg ? '/' + encodeURIComponent(sgg) : '') : ''; history.replaceState(null, '', h || location.pathname + location.search); } catch (_) {} }
   // 한 부분이 실패해도 나머지는 그려지도록
-  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderRegion, renderSupply, renderPermit, renderCy]) {
+  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderRegion, renderTrade, renderSupply, renderPermit, renderCy]) {
     try { const r = fn(); if (r && r.catch) r.catch((e) => console.error(fn.name, e)); } catch (e) { console.error(fn.name, e); }
   }
 }
@@ -921,6 +981,7 @@ async function init() {
     await loadUnsold();
     try { S.pop = await getJSON('data/population.json'); } catch (_) { S.pop = null; }
     try { S.rs = await getJSON('data/region-stats.json'); } catch (_) { S.rs = null; }
+    try { S.trade = await getJSON('data/trade.json'); } catch (_) { S.trade = null; }
   } catch (e) {
     $('#srcBadge').textContent = '데이터를 불러오지 못했습니다'; $('#srcBadge').classList.add('warn');
     console.error(e); return;
