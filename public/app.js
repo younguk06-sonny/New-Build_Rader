@@ -187,7 +187,10 @@ function renderMap() {
     if (placed.some((b) => Math.abs(b[0] - x) < b[2] + hw && Math.abs(b[1] - y) < b[3] + hh)) continue;
     placed.push([x, y, hw, hh]);
     html += `<text x="${x.toFixed(1)}" y="${(y - fs * 0.55).toFixed(1)}" font-size="${fs.toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${esc(it.label)}</text>`;
-    html += `<text class="v" x="${x.toFixed(1)}" y="${(y + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${fmt(curVal(it.s))}</text>`;
+    // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0)
+    const mc = S.metric === 'mom' ? chg(curVal(it.s), prevVal(it.s), false) : null;
+    const vtxt = mc ? mc.t : fmt(curVal(it.s));
+    html += `<text class="v${mc ? ' ' + mc.c : ''}" x="${x.toFixed(1)}" y="${(y + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${vtxt}</text>`;
   }
   svg.innerHTML = html;
   animateView(svg, target);

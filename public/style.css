@@ -105,6 +105,8 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 #map path.outline { fill: none; stroke: var(--ink-2); stroke-opacity: .55; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
 #map text { pointer-events: none; fill: var(--ink); paint-order: stroke; stroke: var(--card); stroke-width: 3px; stroke-linejoin: round; font-weight: 650; text-anchor: middle; dominant-baseline: middle; }
 #map text.v { font-weight: 500; fill: var(--ink-2); }
+#map text.v.up { fill: var(--up); font-weight: 650; }
+#map text.v.down { fill: var(--down); font-weight: 650; }
 
 .legend { position: absolute; right: 0; bottom: 4px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); background: color-mix(in srgb, var(--card) 85%, transparent); padding: 6px 8px; border-radius: 8px; }
 .legend .bar { display: flex; height: 8px; width: 168px; border-radius: 4px; overflow: hidden; }
