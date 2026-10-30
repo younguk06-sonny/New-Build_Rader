@@ -875,6 +875,11 @@ function renderTrade() {
 
 /* ---------- 개발 호재 ---------- */
 const PJ_STATUS_CLASS = { '운영': 'st-run', '부분 운영': 'st-run', '공사': 'st-build', '인허가·설계': 'st-plan', '계획': 'st-idea' };
+// 8개 권역(팔도 기준): 사업이 여러 권역을 지나면 각 권역에 모두 표시
+const PJ_GROUPS = [
+  ['서울', ['서울']], ['경기·인천', ['경기', '인천']], ['강원', ['강원']], ['충청', ['대전', '세종', '충북', '충남']],
+  ['전라', ['전남광주', '전북']], ['대구·경북', ['대구', '경북']], ['부산·울산·경남', ['부산', '울산', '경남']], ['제주', ['제주']],
+];
 function renderProjects() {
   const el = $('#pjBody'), P = S.projects;
   if (!P) { el.innerHTML = '<div class="empty">개발 호재 자료를 불러오지 못했습니다.</div>'; return; }
@@ -882,11 +887,11 @@ function renderProjects() {
   const hit = (p) => sgg ? p.regions.some(([a, b]) => a === sido && b === sgg) : sido ? p.regions.some(([a]) => a === sido) : true;
   const order = (s) => { const i = P.statusOrder.indexOf(s); return i < 0 ? 9 : i; };
   const list = P.projects.filter(hit).sort((a, b) => order(a.status) - order(b.status));
-  const place = sgg || sido || '전국';
   $('#pjMeta').textContent = `${P.asOf.replace(/-/g, '.')} 기준 · ${list.length}건`;
-  if (!list.length) { el.innerHTML = `<div class="empty">${esc(place)}을(를) 지나거나 포함하는 주요 사업이 목록에 없습니다.</div><p class="note">${esc(P.note)}</p>`; return; }
-  el.innerHTML = `<div class="pj-list">${list.map((p) => {
-    // 선택 지역과 같은 시·도의 지역은 강조
+  // 처음엔 선택한 시·도가 속한 권역만 펼침(전국이면 모두 접힘)
+  const key = (sido || '') + '|' + (sgg || '');
+  if (S.pjKey !== key) { S.pjKey = key; S.pjOpen = new Set(sido ? PJ_GROUPS.filter(([, sds]) => sds.includes(sido)).map(([g]) => g) : []); }
+  const card = (p) => {
     const regs = p.regions.map(([a, b]) => `<span class="rg-chip${(sgg ? a === sido && b === sgg : a === sido) ? ' on' : ''}">${esc(a === sido ? b : a + ' ' + b)}</span>`).join('');
     return `<div class="pj">
       <div class="pj-top"><span class="pj-type">${esc(p.type)}</span><b class="pj-name">${esc(p.name)}</b><span class="pj-st ${PJ_STATUS_CLASS[p.status] || ''}">${esc(p.status)}</span></div>
@@ -895,7 +900,21 @@ function renderProjects() {
       <div class="pj-regs">${regs}</div>
       <a class="pj-src" href="${esc(p.source.url)}" target="_blank" rel="noopener">출처: ${esc(p.source.title)} · ${esc(p.source.date)}</a>
     </div>`;
-  }).join('')}</div><p class="note">${esc(P.note)}</p>`;
+  };
+  const groups = PJ_GROUPS.map(([g, sds]) => {
+    const items = list.filter((p) => p.regions.some(([a]) => sds.includes(a)));
+    // 시·도를 고른 경우 다른 권역은 숨김
+    if (sido && !sds.includes(sido)) return '';
+    const st = {}; for (const p of items) st[p.status] = (st[p.status] || 0) + 1;
+    const summary = Object.entries(st).sort((a, b) => order(a[0]) - order(b[0])).map(([k, n]) => `<span class="pj-st ${PJ_STATUS_CLASS[k] || ''}">${esc(k)} ${n}</span>`).join('');
+    const open = S.pjOpen.has(g);
+    return `<details class="pj-group" data-g="${esc(g)}"${open ? ' open' : ''}>
+      <summary><span class="pg-name">${esc(g)}</span><span class="pg-n">${items.length}건</span><span class="pg-st">${summary}</span><span class="chev" aria-hidden="true"></span></summary>
+      <div class="pj-list">${items.length ? items.map(card).join('') : '<div class="empty">이 권역의 주요 사업이 목록에 없습니다.</div>'}</div>
+    </details>`;
+  }).join('');
+  el.innerHTML = `<div class="pj-groups">${groups}</div><p class="note">${esc(P.note)}</p>`;
+  el.querySelectorAll('details.pj-group').forEach((d) => d.addEventListener('toggle', () => { if (d.open) S.pjOpen.add(d.dataset.g); else S.pjOpen.delete(d.dataset.g); }));
 }
 
 /* ---------- 청약 결과 ---------- */
