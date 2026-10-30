@@ -193,6 +193,21 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 .chart .ex-dot.lo { fill: var(--down); }
 .chart .ctip { position: absolute; top: 0; pointer-events: none; background: var(--ink); color: var(--card); font-size: 12px; padding: 5px 8px; border-radius: 7px; white-space: nowrap; transform: translateX(-50%); }
 
+.rs-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 2px 0 8px; }
+.rs-kpis > div { background: var(--bg); border-radius: 10px; padding: 7px 10px; display: flex; flex-direction: column; min-width: 0; }
+.rs-kpis .k { font-size: 11px; color: var(--muted); }
+.rs-kpis b { font-size: 16px; font-weight: 750; white-space: nowrap; }
+.rs-kpis > div > span:last-child:not(.k) { font-size: 11.5px; font-weight: 600; }
+.rs-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.mini-h { font-size: 12px; color: var(--ink-2); font-weight: 650; margin-bottom: 2px; }
+.agebars { display: grid; gap: 4px; margin-top: 4px; }
+.ab { display: grid; grid-template-columns: 64px 1fr 48px 52px; align-items: center; gap: 8px; font-size: 12.5px; }
+.ab .al { color: var(--ink-2); }
+.ab .at { height: 12px; background: var(--line-2); border-radius: 3px; overflow: hidden; }
+.ab .at i { display: block; height: 100%; background: var(--s4); border-radius: 3px; }
+.ab .av { text-align: right; font-weight: 650; }
+.ab .an { text-align: right; font-size: 11.5px; }
+#regionCard .sub-h:first-child { margin-top: 0; }
 .supply-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .sbox { border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; }
 .sbox .k { font-size: 12px; color: var(--muted); }
@@ -256,6 +271,8 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .supply-grid { grid-template-columns: minmax(0, 1fr); }
   .cy-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rs-two { grid-template-columns: minmax(0, 1fr); }
+  .rs-kpis b { font-size: 14px; }
   .rank li { grid-template-columns: 20px minmax(64px, 1fr) 1.2fr 58px 50px; gap: 6px; }
   .hero h2 { font-size: 22px; }
   .legend .bar, .legend .ticks { width: 130px; }

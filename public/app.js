@@ -747,6 +747,70 @@ async function renderPermit() {
   for (const [i, ps, unit] of charts) drawChart($('#supChart' + i), ps.months.slice(-36), ps.vals.slice(-36), { type: 'bar', height: 130, unit });
 }
 
+/* ---------- 지역 여건: 거래량 · 인구·세대 · 연령 ---------- */
+function rsSeries(name) {
+  const d = S.rs?.series?.[name]; if (!d) return null;
+  const { sido, sgg } = S.sel;
+  let v = null, level = 'sgg';
+  if (sgg) { v = d.sgg?.[sido]?.[sgg] || (sido === '세종' ? d.sido?.['세종'] : null); }
+  if (!v && sido) { v = d.sido?.[sido]; level = 'sido'; }
+  if (!sido) { level = 'nat'; v = d.nat && d.nat.some((x) => x != null) ? d.nat : d.months.map((_, i) => { let t = null; for (const k in d.sido) if (d.sido[k][i] != null) t = (t || 0) + d.sido[k][i]; return t; }); }
+  return v ? { months: d.months, vals: v, level, unit: d.unit, label: d.label, partial: sgg && level === 'sido' } : null;
+}
+const yearTick = (m) => (m.slice(4) === '01' ? `${m.slice(2, 4)}년` : null);
+function sumLast(v, n, off = 0) { let t = 0, ok = false; for (let i = v.length - n - off; i < v.length - off; i++) if (i >= 0 && v[i] != null) { t += v[i]; ok = true; } return ok ? t : null; }
+
+function renderRegion() {
+  if (!S.rs) { $('#rsDeal').innerHTML = '<div class="empty">지역 여건 자료를 아직 받지 못했습니다. 다음 자동 수집 후 표시됩니다.</div>'; $('#rsPop').innerHTML = ''; $('#rsAge').innerHTML = ''; return; }
+  const place = S.sel.sgg || S.sel.sido || '전국';
+  // 1) 매매 거래량
+  S.dealKind = S.dealKind || 'aptDeal';
+  const deal = rsSeries(S.dealKind);
+  const kinds = [['aptDeal', '아파트'], ['houseDeal', '주택 전체']].filter(([k]) => S.rs.series[k]);
+  if (deal) {
+    const l12 = sumLast(deal.vals, 12), p12 = sumLast(deal.vals, 12, 12), c = chg(l12, p12);
+    let avg5 = null; { const t = sumLast(deal.vals, 60); avg5 = t != null ? t / 5 : null; }
+    $('#rsDeal').innerHTML = `<div class="sub-h"><span>매매 거래량 <span class="muted">${esc(place)}${deal.partial ? ' · 시·도 단위' : ''} · 월별 실거래 신고 건수</span></span>
+      <span class="seg small" id="dealSeg">${kinds.map(([k, t]) => `<button data-k="${k}" class="${k === S.dealKind ? 'on' : ''}">${t}</button>`).join('')}</span></div>
+      <div class="rs-kpis"><div><span class="k">최근 12개월</span><b>${fmt(l12)}건</b><span class="${c.c}">${c.t}</span></div><div><span class="k">최근 5년 연평균</span><b>${fmt(avg5)}건</b></div><div><span class="k">최근 달 (${fmtM(deal.months.at(-1))})</span><b>${fmt(deal.vals.at(-1))}건</b></div></div>
+      <div class="chart" id="dealChart"></div>`;
+    drawChart($('#dealChart'), deal.months, deal.vals, { type: 'bar', height: 150, unit: '건', xTick: yearTick });
+    $('#dealSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.dealKind = b.dataset.k; renderRegion(); };
+  } else $('#rsDeal').innerHTML = `<div class="sub-h">매매 거래량</div><div class="empty">이 지역의 거래량 자료가 없습니다.</div>`;
+  // 2) 인구 · 세대수
+  const pop = rsSeries('pop'), hh = rsSeries('hh');
+  if (pop || hh) {
+    const kp = (s, unit) => { if (!s) return ['–', { t: '', c: 'flat' }]; const now = s.vals.at(-1), past = s.vals[0]; return [fmt(now) + unit, chg(now, past)]; };
+    const [pn, pc] = kp(pop, '명'), [hn, hc] = kp(hh, '세대');
+    const per = pop && hh && hh.vals.at(-1) ? (pop.vals.at(-1) / hh.vals.at(-1)).toFixed(2) : null;
+    const m0 = (pop || hh).months[0];
+    $('#rsPop').innerHTML = `<div class="sub-h"><span>인구 · 세대수 <span class="muted">${esc(place)} · ${fmtM(m0)} → ${fmtM((pop || hh).months.at(-1))}</span></span></div>
+      <div class="rs-kpis"><div><span class="k">인구</span><b>${pn}</b><span class="${pc.c}">5년 ${pc.t}</span></div><div><span class="k">세대수</span><b>${hn}</b><span class="${hc.c}">5년 ${hc.t}</span></div><div><span class="k">세대당 인구</span><b>${per ? per + '명' : '–'}</b></div></div>
+      <div class="rs-two"><div><div class="mini-h">인구</div><div class="chart" id="popChart"></div></div><div><div class="mini-h">세대수</div><div class="chart" id="hhChart"></div></div></div>`;
+    if (pop) drawChart($('#popChart'), pop.months, pop.vals, { height: 140, unit: '명', xTick: yearTick, extremes: true });
+    if (hh) drawChart($('#hhChart'), hh.months, hh.vals, { height: 140, unit: '세대', xTick: yearTick, extremes: true });
+  } else $('#rsPop').innerHTML = '';
+  // 3) 연령 분포
+  const A = S.rs.age;
+  let arr = null;
+  if (A) { const { sido, sgg } = S.sel; arr = sgg ? (A.sgg?.[sido]?.[sgg] || (sido === '세종' ? A.sido?.['세종'] : null)) : sido ? A.sido?.[sido] : (A.nat?.some((x) => x) ? A.nat : null); }
+  if (arr) {
+    // 5세 구간 → 10세 구간(80세 이상은 묶음)
+    const labels = ['0~9세', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80세 이상'], bands = [];
+    for (let i = 0; i < 16; i += 2) bands.push((arr[i] || 0) + (arr[i + 1] || 0));
+    bands.push(arr.slice(16).reduce((a, b) => a + (b || 0), 0));
+    const tot = bands.reduce((a, b) => a + b, 0) || 1;
+    const mean = arr.reduce((a, v, i) => a + (v || 0) * (i * 5 + 2.5), 0) / (arr.reduce((a, b) => a + (b || 0), 0) || 1);
+    const o65 = arr.slice(13).reduce((a, b) => a + (b || 0), 0) / tot, y2039 = (arr[4] + arr[5] + arr[6] + arr[7]) / tot;
+    const mx = Math.max(...bands);
+    $('#rsAge').innerHTML = `<div class="sub-h"><span>거주자 연령 <span class="muted">${esc(place)} · ${fmtM(A.month)} 기준</span></span></div>
+      <div class="rs-kpis"><div><span class="k">평균 연령(추정)</span><b>${mean.toFixed(1)}세</b></div><div><span class="k">20~39세 비중</span><b>${(y2039 * 100).toFixed(1)}%</b></div><div><span class="k">65세 이상 비중</span><b>${(o65 * 100).toFixed(1)}%</b></div></div>
+      <div class="agebars">${bands.map((v, i) => `<div class="ab"><span class="al">${labels[i]}</span><span class="at"><i style="width:${(v / mx * 100).toFixed(1)}%"></i></span><span class="av">${(v / tot * 100).toFixed(1)}%</span><span class="an muted">${fmtPop(v)}</span></div>`).join('')}</div>
+      <p class="note">행정안전부 주민등록인구(5세별). 평균 연령은 5세 구간의 가운데 값으로 계산한 추정치입니다.</p>`;
+  } else $('#rsAge').innerHTML = '';
+  $('#rsMeta').textContent = S.rs.fetchedAt ? `자료 수집 ${S.rs.fetchedAt.slice(0, 10)}` : '';
+}
+
 /* ---------- 청약 결과 ---------- */
 async function renderCy() {
   const el = $('#cy');
@@ -839,7 +903,7 @@ function select(sido, sgg, { push = true } = {}) {
   // 주소창에 지역 기록(공유용). 미리보기처럼 막힌 환경에서는 조용히 건너뜀
   if (push && !window.NO_HASH) { try { const h = sido ? '#' + encodeURIComponent(sido) + (sgg ? '/' + encodeURIComponent(sgg) : '') : ''; history.replaceState(null, '', h || location.pathname + location.search); } catch (_) {} }
   // 한 부분이 실패해도 나머지는 그려지도록
-  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderSupply, renderPermit, renderCy]) {
+  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderRegion, renderSupply, renderPermit, renderCy]) {
     try { const r = fn(); if (r && r.catch) r.catch((e) => console.error(fn.name, e)); } catch (e) { console.error(fn.name, e); }
   }
 }
@@ -856,6 +920,7 @@ async function init() {
     prepGeo();
     await loadUnsold();
     try { S.pop = await getJSON('data/population.json'); } catch (_) { S.pop = null; }
+    try { S.rs = await getJSON('data/region-stats.json'); } catch (_) { S.rs = null; }
   } catch (e) {
     $('#srcBadge').textContent = '데이터를 불러오지 못했습니다'; $('#srcBadge').classList.add('warn');
     console.error(e); return;
