@@ -44,22 +44,26 @@ const errors = [];
 const TOTALS = new Set(['', '계', '합계', '총계', '전체', '소계']);
 const distinct = (rows, i, n = 40) => [...new Set(rows.map((r) => r[i]))].slice(0, n);
 // 월별 누계 → 월별 값 (같은 해 안에서 전월 누계를 뺌, 1월은 그대로)
+// 통합 첫 달의 '전남광주'는 전월 행이 없으므로 전월 광주+전남 누계를 대신 사용
 function decumulate(rows) {
-  const key = (r) => r.slice(0, 4).join('|');
-  const by = new Map();
-  for (const r of rows) { const k = key(r); if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
-  const out = [];
-  for (const list of by.values()) {
-    list.sort((a, b) => a[4].localeCompare(b[4]));
-    for (let i = 0; i < list.length; i++) {
-      const r = list[i], p = list[i - 1];
-      const sameYear = p && p[4].slice(0, 4) === r[4].slice(0, 4) && +r[4].slice(4) === +p[4].slice(4) + 1;
-      let v = r[5];
-      if (r[4].slice(4) !== '01') v = sameYear && v != null && p[5] != null ? v - p[5] : null;
-      out.push([...r.slice(0, 5), v]);
+  const val = new Map();
+  for (const r of rows) val.set(r.slice(0, 5).join('|'), r[5]);
+  const prevPeriod = (p) => { const y = +p.slice(0, 4), m = +p.slice(4); return m === 1 ? null : `${y}${String(m - 1).padStart(2, '0')}`; };
+  return rows.map((r) => {
+    const p = r[4];
+    if (p.slice(4) === '01' || r[5] == null) return [...r.slice(0, 5), r[5]];
+    const pp = prevPeriod(p);
+    let prev = val.get([...r.slice(0, 4), pp].join('|'));
+    if (prev == null) {
+      const i = r.findIndex((c, k) => k < 3 && c === '전남광주');
+      if (i >= 0) {
+        const alt = (name) => { const x = r.slice(0, 4); x[i] = name; return val.get([...x, pp].join('|')); };
+        const g = alt('광주'), j = alt('전남');
+        if (g != null || j != null) prev = (g || 0) + (j || 0);
+      }
     }
-  }
-  return out;
+    return [...r.slice(0, 5), prev == null ? null : r[5] - prev];
+  });
 }
 
 if (process.env.KOSIS_KEY) {

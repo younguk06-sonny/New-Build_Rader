@@ -390,33 +390,57 @@ async function loadPermit() {
 
 const TOTALS = new Set(['계', '합계', '총계', '소계', '전체', '']);
 const ALL_SIDO_NAMES = new Set([...ORDER.filter((x) => x !== '전남광주'), '광주', '전남', ...Object.values(LONG), '광주광역시', '전라남도', '강원도', '전라북도']);
+const AGG_REGIONS = new Set(['전국', '수도권', '지방', '지방소계', '기타광역시', '기타지방']);
+// 분류값 하나가 '합계'에 가까운 정도 (높을수록 합계)
+function totalScore(c) {
+  if (TOTALS.has(c)) return 2;
+  if (/가구수/.test(c)) return 3;          // 인허가: 합계(가구수기준)
+  if (/동수/.test(c)) return -3;           // 인허가: 합계(동수기준) 제외
+  if (c === '순계') return 2;              // 분양: 월 실적
+  if (c === '누계') return -5;             // 분양: 누계 제외
+  if (/^(합|총계|소계|합계)/.test(c)) return 1;
+  return -1;
+}
 function pickPermitSeries(j, sido, sgg) {
   const rows = j.rows || [];
   const OLD = { 강원: ['강원도'], 전북: ['전라북도'], 제주: ['제주도'] };
   const names = (sd) => [sd, LONG[sd], ...(OLD[sd] || [])];
   const has = (r, list) => list.some((n) => r[0] === n || r[1] === n || r[2] === n);
-  let level = null, cand = [];
-  if (sgg) { cand = rows.filter((r) => has(r, [sgg]) && (has(r, names(sido)) || rows.filter((x) => has(x, [sgg])).length)); if (cand.length) level = 'sgg'; }
-  if (!cand.length && sido) { cand = rows.filter((r) => has(r, names(sido)) && !(r.slice(0, 3).some((c) => c && c !== sido && c !== LONG[sido] && /[시군구]$/.test(c)))); level = 'sido'; }
-  if (!cand.length && sido === '전남광주') { cand = rows.filter((r) => has(r, ['광주', '광주광역시', '전남', '전라남도'])); level = 'sido'; }
-  if (!cand.length && !sido) { cand = rows.filter((r) => has(r, ['전국'])); level = 'nat'; }
-  if (!cand.length && !sido) { cand = rows.filter((r) => r.slice(0, 3).some((c) => ALL_SIDO_NAMES.has(c))); level = 'nat'; } // 전국 행이 없으면 시·도 합계
-  if (!cand.length) return null;
-  // 같은 지역 안에서 '계' 성격의 분류·항목을 고름
-  const groups = new Map();
-  for (const r of cand) {
-    const regionNames = new Set([sgg, sido, LONG[sido], '광주', '광주광역시', '전남', '전라남도', '전국', ...(level === 'nat' ? ALL_SIDO_NAMES : [])].filter(Boolean));
-    const other = r.slice(0, 3).filter((c) => !regionNames.has(c));
-    const key = other.join('|') + '#' + r[3];
-    const score = other.filter((c) => TOTALS.has(c)).length * 2 + (/(계|합계|전체)/.test(r[3]) ? 1 : 0) - other.filter((c) => !TOTALS.has(c)).length;
-    if (!groups.has(key)) groups.set(key, { score, rows: [], label: [...other.filter((c) => !TOTALS.has(c)), r[3]].filter(Boolean).join(' · ') });
-    groups.get(key).rows.push(r);
+  const isRegion = (c) => ALL_SIDO_NAMES.has(c) || AGG_REGIONS.has(c) || c === '전남광주';
+  let level = null, groupsets = [];
+  if (sgg) { const c = rows.filter((r) => has(r, [sgg]) && has(r, names(sido))); if (c.length) { level = 'sgg'; groupsets = [c]; } }
+  if (!level && sido === '전남광주') {
+    // 통합 뒤는 '전남광주' 행, 통합 전은 광주+전남 행을 이어 붙임
+    level = 'sido'; groupsets = [rows.filter((r) => has(r, ['전남광주', '전남광주통합특별시'])), rows.filter((r) => has(r, ['광주', '광주광역시', '전남', '전라남도']))];
+  } else if (!level && sido) { level = 'sido'; groupsets = [rows.filter((r) => has(r, names(sido)))]; }
+  if (!level) {
+    level = 'nat';
+    const n = rows.filter((r) => has(r, ['전국']));
+    groupsets = [n.length ? n : rows.filter((r) => !r.slice(0, 3).some(isRegion))];
   }
-  const best = [...groups.values()].sort((a, b) => b.score - a.score)[0];
-  const byM = new Map();
-  for (const r of best.rows) if (r[5] != null) byM.set(r[4], (byM.get(r[4]) || 0) + r[5]);
+  const series = (cand) => {
+    if (!cand.length) return null;
+    const groups = new Map();
+    for (const r of cand) {
+      const other = r.slice(0, 3).filter((c) => c && !isRegion(c) && c !== sgg);
+      const key = other.join('|') + '#' + r[3];
+      if (!groups.has(key)) {
+        const score = other.reduce((a, c) => a + totalScore(c), 0) + (/(합계|계|전체)/.test(r[3]) ? 1 : 0);
+        groups.set(key, { score, rows: [], label: other.filter((c) => totalScore(c) < 2 && !/가구수/.test(c)).concat(/(합계|계)/.test(r[3]) ? [] : [r[3]]).join(' · ') });
+      }
+      groups.get(key).rows.push(r);
+    }
+    const best = [...groups.values()].sort((a, b) => b.score - a.score)[0];
+    const byM = new Map();
+    for (const r of best.rows) if (r[5] != null) byM.set(r[4], (byM.get(r[4]) || 0) + r[5]);
+    return { byM, label: best.label };
+  };
+  const parts = groupsets.map(series).filter(Boolean);
+  if (!parts.length) return null;
+  const byM = new Map(parts[parts.length - 1].byM);
+  if (parts.length > 1) for (const [m, v] of parts[0].byM) byM.set(m, v); // 앞쪽(통합 뒤) 값을 우선
   const months = [...byM.keys()].sort();
-  return { level, months, vals: months.map((mm) => byM.get(mm)), label: best.label };
+  return { level, months, vals: months.map((mm) => byM.get(mm)), label: parts[0].label };
 }
 
 const SUPPLY_NOTE = {
