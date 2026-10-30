@@ -29,6 +29,11 @@ const writeJSON = async (p, o) => { await fs.mkdir(path.dirname(p), { recursive:
 const num = (v) => { if (v == null || v === '') return null; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : null; };
 const ymd = (d) => d.toISOString().slice(0, 10);
 
+// 실제 시·군·구 목록(지도와 같은 2026.10 기준) — 주소 해석 검증용
+const GEO = await readJSON(path.join(OUT, 'geo.json'), { sgg: [] });
+const VALID = {};
+for (const f of GEO.sgg) (VALID[f.sd] ||= new Set()).add(f.n);
+
 const meta = await readJSON(path.join(OUT, 'meta.json'), {});
 meta.runAt = new Date().toISOString();
 const errors = [];
@@ -120,10 +125,11 @@ if (key) {
 
     // 시·도별 파일
     const bySido = Object.fromEntries(SIDOS.map((s) => [s, []]));
-    let unmatched = 0;
+    let unmatched = 0; const noSgg = [];
     for (const r of notices) {
-      const reg = parseRegion(r.HSSPLY_ADRES, r.SUBSCRPT_AREA_CODE_NM);
+      const reg = parseRegion(r.HSSPLY_ADRES, r.SUBSCRPT_AREA_CODE_NM, VALID);
       if (!reg.sido || !bySido[reg.sido]) { unmatched++; continue; }
+      if (!reg.sgg) noSgg.push(r.HSSPLY_ADRES);
       const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO;
       bySido[reg.sido].push({
         id, name: r.HOUSE_NM, addr: r.HSSPLY_ADRES, sgg: reg.sgg,
@@ -141,7 +147,7 @@ if (key) {
       items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
       await writeJSON(path.join(OUT, 'cheongyak', `${sd}.json`), { sido: sd, from, fetchedAt, items });
     }
-    meta.cheongyak = { ok: fails === 0, at: fetchedAt, from, notices: notices.length, unmatched, compFails: fails };
+    meta.cheongyak = { ok: fails === 0, at: fetchedAt, from, notices: notices.length, unmatched, noSgg: noSgg.length, noSggSample: noSgg.slice(0, 10), compFails: fails };
     if (sample) meta.compSample = Object.keys(sample); // 경쟁률 응답 필드 이름 확인용(값은 저장 안 함)
     log('청약 저장 완료 · 지역 미배정', unmatched, '· 경쟁률 실패', fails);
     if (fails > need.length * 0.3 && need.length > 10) errors.push(`청약 경쟁률 조회 실패 ${fails}/${need.length}`);

@@ -436,7 +436,7 @@ async function renderPermit() {
 async function renderCy() {
   const el = $('#cy');
   const { sido, sgg } = S.sel;
-  if (!sgg) { el.innerHTML = `<div class="empty"><b>${sido ? '시·군·구' : '시·도와 시·군·구'}</b>를 고르면 최근 3년 아파트 청약 결과가 나타납니다.</div>`; return; }
+  if (!sido) { el.innerHTML = `<div class="empty">지도나 목록에서 <b>시·도</b>를 고르면 최근 3년 아파트 청약 결과가 나타납니다.</div>`; return; }
   let all = S.cy.get(sido);
   if (!all) {
     el.innerHTML = '<div class="skel" style="width:60%"></div><div class="skel"></div><div class="skel"></div><div class="skel" style="width:80%"></div>';
@@ -452,9 +452,9 @@ async function renderCy() {
     }
     if (S.sel.sido !== sido || S.sel.sgg !== sgg) return;
   }
-  const d = { ...all, items: all.items.filter((it) => it.sgg === sgg) };
+  const d = { ...all, items: sgg ? all.items.filter((it) => it.sgg === sgg) : all.items.slice() };
   d.count = d.items.length;
-  if (!d.items.length) { el.innerHTML = `<div class="empty">${esc(sgg)}에는 최근 3년(${esc(d.from)} 이후) 아파트 분양 공고가 없습니다.</div>`; return; }
+  if (!d.items.length) { el.innerHTML = `<div class="empty">${esc(sgg || sido)}에는 최근 3년(${esc(d.from)} 이후) 아파트 분양 공고가 없습니다.</div>`; return; }
 
   const items = d.items.slice();
   const rate = (it) => it.comp?.avg1 ?? -1;
@@ -471,7 +471,7 @@ async function renderCy() {
     const chip = !c ? '' : c.shortModels > 0 ? `<span class="chip short">미달 ${c.shortModels}/${c.models}개 타입</span>` : c.avg1 >= 10 ? '<span class="chip hot">1순위 마감</span>' : c.avg1 >= 1 ? '<span class="chip">1순위 마감</span>' : '<span class="chip">2순위</span>';
     const nm = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.name)}</a>` : esc(it.name);
     const rateHtml = c && c.supply ? `<b>${c.avg1.toFixed(c.avg1 >= 100 ? 0 : 1)} : 1</b><span>1순위 평균 · 최고 ${c.max1.toFixed(c.max1 >= 100 ? 0 : 1)}</span>` : `<b class="muted">–</b><span>경쟁률 없음</span>`;
-    return `<div class="cy-item"><div class="nm">${nm}${chip}</div><div class="rate">${rateHtml}</div><div class="meta">${esc(it.date || '')} 공고 · ${fmt(it.total)}세대${it.kind ? ' · ' + esc(it.kind) : ''}${it.mvn ? ' · 입주 ' + esc(fmtM(String(it.mvn))) : ''}</div></div>`;
+    return `<div class="cy-item"><div class="nm">${nm}${chip}</div><div class="rate">${rateHtml}</div><div class="meta">${!sgg && it.sgg ? esc(it.sgg) + ' · ' : ''}${esc(it.date || '')} 공고 · ${fmt(it.total)}세대${it.kind ? ' · ' + esc(it.kind) : ''}${it.mvn ? ' · 입주 ' + esc(fmtM(String(it.mvn))) : ''}</div></div>`;
   };
   el.innerHTML = `
     <div class="cy-sum">
