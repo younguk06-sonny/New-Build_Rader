@@ -155,9 +155,34 @@ function labelPoint(rings) {
 const CALLOUT = { 서울: [178, 108], 세종: [124, 214], 대전: [124, 258] };
 const LABEL_NUDGE = { 경기: [24, -34], 인천: [-20, 6], 서울: [2, -2], 대전: [3, 4], 충북: [6, -6], 세종: [-4, -2] };
 
+// 모양 안에서 가장 넓은 지점(가장자리에서 가장 먼 점)과 그 거리 — 이름표 위치용
+function poleOf(rings) {
+  let best = null, bestA = 0;
+  for (const r of rings) { const a = ringArea(r); if (a > bestA) { bestA = a; best = r; } }
+  if (!best) return { pole: null, rad: 0 };
+  const pts = best.map((q) => P(q[0], q[1]));
+  let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+  for (const [x, y] of pts) { if (x < a0) a0 = x; if (y < b0) b0 = y; if (x > a1) a1 = x; if (y > b1) b1 = y; }
+  const inside = (x, y) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const dist = (x, y) => { let m = Infinity; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [x1, y1] = pts[j], [x2, y2] = pts[i]; const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy; let t = L2 ? ((x - x1) * dx + (y - y1) * dy) / L2 : 0; t = Math.max(0, Math.min(1, t)); const ex = x1 + t * dx - x, ey = y1 + t * dy - y; const d = ex * ex + ey * ey; if (d < m) m = d; } return Math.sqrt(m); };
+  let bx = (a0 + a1) / 2, by = (b0 + b1) / 2, bd = inside(bx, by) ? dist(bx, by) : 0;
+  let cw = (a1 - a0), ch = (b1 - b0);
+  for (let pass = 0; pass < 3; pass++) {
+    const N = pass ? 8 : 18, ox = pass ? bx - cw / 2 : a0, oy = pass ? by - ch / 2 : b0;
+    for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) {
+      const x = ox + cw * i / N, y = oy + ch * j / N;
+      if (!inside(x, y)) continue;
+      const d = dist(x, y); if (d > bd) { bd = d; bx = x; by = y; }
+    }
+    cw /= N / 2; ch /= N / 2;
+  }
+  return { pole: [bx, by], rad: bd };
+}
+
 function prepGeo() {
   for (const f of S.geo.sido) { f.d = toPath(f.r); f.bb = bboxOf(f.r); f.core = coreBBox(f.sd === '인천' ? f.r.filter((r) => Math.max(...r.map((q) => q[0])) > 126.35) : f.r); Object.assign(f, labelPoint(f.r)); }
   for (const f of S.geo.sgg) { f.d = toPath(f.r); f.bb = bboxOf(f.r); Object.assign(f, labelPoint(f.r)); }
+  for (const f of [...S.geo.sido, ...S.geo.sgg]) Object.assign(f, poleOf(f.r));
   const all = S.geo.sido.map((f) => f.bb);
   S.natBB = [Math.min(...all.map((b) => b[0])), Math.min(...all.map((b) => b[1])), Math.max(...all.map((b) => b[2])), Math.max(...all.map((b) => b[3]))];
 }
@@ -205,54 +230,100 @@ function renderMap() {
 
   // 보기 영역
   const bb = sido ? S.geo.sido.find((f) => f.sd === sido).core : S.natBB;
-  const pad = sido ? 0.06 : 0.03;
+  const pad = sido ? 0.06 : 0.03, padY = sido ? 0.09 : 0.03;
   const w = bb[2] - bb[0], h = bb[3] - bb[1];
-  const target = [bb[0] - w * pad, bb[1] - h * pad, w * (1 + 2 * pad), h * (1 + 2 * pad)];
-  // 화면 폭에 맞춰 지도 높이 조절(가로로 긴 지역이 작게 보이지 않도록)
+  let target = [bb[0] - w * pad, bb[1] - h * padY, w * (1 + 2 * pad), h * (1 + 2 * padY)];
   const bw = svg.parentElement.clientWidth || 600;
   const maxH = Math.min(window.innerHeight * 0.64, 620);
-  svg.style.height = Math.round(Math.max(Math.min(260, maxH), Math.min(maxH, bw * target[3] / target[2]))) + 'px';
-  const box = svg.getBoundingClientRect();
-  const scale = Math.max(target[2] / (box.width || 600), target[3] / (box.height || 600));
+  const basePx = bw < 520 ? 10 : 11.5; // 글자 크기(화면 px)
 
-  // 라벨
-  const fs = 12 * scale;
-  const placed = [];
   const valueText = (it) => {
-    // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0)
+    // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0), 인구 모드는 인구
     if (S.metric === 'pop') return { t: fmtPop(it.pop), c: '' };
     const mc = S.metric === 'mom' ? chg(curVal(it.s), prevVal(it.s), false) : null;
     return { t: mc ? mc.t : fmt(curVal(it.s)), c: mc ? ' ' + mc.c : '' };
   };
+  // 이름표 배치: 모양 안에 들어가면 안쪽, 아니면 옆 여백에 세우고 선으로 연결
+  const layout = (tg) => {
+    // 좁은 화면은 옆 이름표 공간까지 고려해 지도를 정사각형 가까이 키움
+    const minH = bw < 520 ? Math.min(maxH, bw * 0.95) : Math.min(260, maxH);
+    svg.style.height = Math.round(Math.max(minH, Math.min(maxH, bw * tg[3] / tg[2]))) + 'px';
+    const box = svg.getBoundingClientRect();
+    const scale = Math.max(tg[2] / (box.width || 600), tg[3] / (box.height || 600));
+    const fs = basePx * scale;
+    const placed = [], inside = [], outs = [];
+    if (!sido) for (const it of items) if (CALLOUT[it.key] && it.f.pt) {
+      const [lx, ly] = CALLOUT[it.key];
+      placed.push([lx - 20 * scale, ly, 22 * scale, fs * 1.2], [it.f.pt[0], it.f.pt[1], 2 * scale, 2 * scale]);
+    }
+    const order = items.filter((it) => !(!sido && CALLOUT[it.key]) && it.f.pole).sort((a, b) => b.f.rad - a.f.rad);
+    for (const it of order) {
+      const vt = valueText(it);
+      const nud = !sido && LABEL_NUDGE[it.key] ? LABEL_NUDGE[it.key] : [0, 0];
+      const x = it.f.pole[0] + nud[0] * scale / 0.9, y = it.f.pole[1] + nud[1] * scale / 0.9;
+      const hw = Math.max(it.label.length * fs * 0.5, vt.t.length * fs * 0.3), hh = fs * 1.1;
+      const room = nud[0] || nud[1] ? Infinity : it.f.rad;
+      const fits = room >= hh * 0.85 && room >= hw * 0.7;
+      const hit = placed.some((q) => Math.abs(q[0] - x) < q[2] + hw && Math.abs(q[1] - y) < q[3] + hh);
+      if (fits && !hit) { placed.push([x, y, hw, hh]); inside.push({ it, x, y, vt }); }
+      else outs.push({ it, vt, w: (it.label.length * 1.1 + vt.t.length * 0.7 + 1.8) * fs });
+    }
+    return { scale, fs, inside, outs };
+  };
+  let L = layout(target);
+  if (L.outs.length) {
+    // 옆 이름표 자리만큼 좌우 여백을 넓힌 뒤 다시 배치
+    const cx = (bb[0] + bb[2]) / 2, gap = 1.6 * L.fs;
+    const side = (o) => (!sido || o.it.f.pole[0] >= cx ? 'R' : 'L');
+    const wl = Math.max(0, ...L.outs.filter((o) => side(o) === 'L').map((o) => o.w)), wr = Math.max(0, ...L.outs.filter((o) => side(o) === 'R').map((o) => o.w));
+    target = [target[0] - (wl ? wl + gap : 0), target[1], target[2] + (wl ? wl + gap : 0) + (wr ? wr + gap : 0), target[3]];
+    L = layout(target);
+  }
+  const { scale, fs } = L, sw = (3 * scale).toFixed(2);
+
+  // 고정 이름표(전국 지도의 서울·세종·대전)
   if (!sido) {
     for (const it of items) {
       const pos = CALLOUT[it.key];
       if (!pos || !it.f.pt) continue;
-      const [lx, ly] = pos, [px, py] = it.f.pt, sw = (3 * scale).toFixed(2);
+      const [lx, ly] = pos, [px, py] = it.f.pt;
       const vt = valueText(it);
       const tw = Math.max(it.label.length * fs * 0.95, vt.t.length * fs * 0.55);
       html += `<line class="leader" x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${(lx + 3 * scale).toFixed(1)}" y2="${ly.toFixed(1)}"/>`;
       html += `<circle class="leader-dot" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(2.2 * scale).toFixed(2)}"/>`;
-      // 이름표도 누르면 그 시·도로 이동
       html += `<rect class="callout-hit" data-key="${esc(it.key)}" x="${(lx - tw).toFixed(1)}" y="${(ly - fs * 1.3).toFixed(1)}" width="${(tw + 4 * scale).toFixed(1)}" height="${(fs * 2.5).toFixed(1)}" rx="${(3 * scale).toFixed(1)}"/>`;
       html += `<text class="co" x="${lx.toFixed(1)}" y="${(ly - fs * 0.55).toFixed(1)}" font-size="${fs.toFixed(2)}" style="stroke-width:${sw}px">${esc(it.label)}</text>`;
       html += `<text class="co v${vt.c}" x="${lx.toFixed(1)}" y="${(ly + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${sw}px">${vt.t}</text>`;
-      placed.push([lx - tw / 2, ly, tw / 2 + 2 * scale, fs * 1.2], [px, py, 2 * scale, 2 * scale]);
     }
   }
-  const order = items.slice().sort((a, b) => (sgg && a.key === sgg ? -1 : sgg && b.key === sgg ? 1 : (curVal(b.s) ?? 0) - (curVal(a.s) ?? 0)));
-  for (const it of order) {
-    if (!sido && CALLOUT[it.key]) continue;
-    const minArea = (sido ? 700 : 250) * scale * scale;
-    if (!it.f.pt || (it.f.area < minArea && !(sgg && it.key === sgg))) continue;
-    const nud = !sido && LABEL_NUDGE[it.key] ? LABEL_NUDGE[it.key] : [0, 0];
-    const x = it.f.pt[0] + nud[0] * scale / 0.9, y = it.f.pt[1] + nud[1] * scale / 0.9;
-    const hw = Math.max(it.label.length * fs * 0.52, 2.2 * fs), hh = fs * 1.15;
-    if (placed.some((b) => Math.abs(b[0] - x) < b[2] + hw && Math.abs(b[1] - y) < b[3] + hh)) continue;
-    placed.push([x, y, hw, hh]);
-    html += `<text x="${x.toFixed(1)}" y="${(y - fs * 0.55).toFixed(1)}" font-size="${fs.toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${esc(it.label)}</text>`;
-    const vt = valueText(it);
-    html += `<text class="v${vt.c}" x="${x.toFixed(1)}" y="${(y + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${vt.t}</text>`;
+  // 안쪽 이름표
+  for (const { it, x, y, vt } of L.inside) {
+    html += `<text x="${x.toFixed(1)}" y="${(y - fs * 0.55).toFixed(1)}" font-size="${fs.toFixed(2)}" style="stroke-width:${sw}px">${esc(it.label)}</text>`;
+    html += `<text class="v${vt.c}" x="${x.toFixed(1)}" y="${(y + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${sw}px">${vt.t}</text>`;
+  }
+  // 옆 이름표: 왼쪽·오른쪽 기둥에 위아래로 겹치지 않게 세움
+  if (L.outs.length) {
+    const cx = (bb[0] + bb[2]) / 2, gap = 1.2 * fs, sp = fs * 1.5;
+    const top = target[1] + fs, bottom = target[1] + target[3] - fs * 0.5;
+    for (const sideKey of ['L', 'R']) {
+      const col = L.outs.filter((o) => (!sido || o.it.f.pole[0] >= cx ? 'R' : 'L') === sideKey).sort((a, b) => a.it.f.pole[1] - b.it.f.pole[1]);
+      if (!col.length) continue;
+      const step = Math.min(sp, (bottom - top) / Math.max(1, col.length - 1 || 1));
+      let ys = []; let prev = -Infinity;
+      for (const o of col) { const yy = Math.max(o.it.f.pole[1], prev + step, top); ys.push(yy); prev = yy; }
+      const over = ys[ys.length - 1] - bottom;
+      if (over > 0) { ys = ys.map((v) => v - over); for (let i = 0; i < ys.length; i++) ys[i] = Math.max(ys[i], top + i * step); }
+      const lx = sideKey === 'L' ? bb[0] - gap : bb[2] + gap, anchor = sideKey === 'L' ? 'end' : 'start';
+      col.forEach((o, i) => {
+        const [px, py] = o.it.f.pole, ly = ys[i];
+        const ex = sideKey === 'L' ? lx + 0.4 * fs : lx - 0.4 * fs;
+        html += `<line class="leader" x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${(ly - fs * 0.35).toFixed(1)}"/>`;
+        html += `<circle class="leader-dot" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(1.8 * scale).toFixed(2)}"/>`;
+        const rx = sideKey === 'L' ? lx - o.w : lx - 0.2 * fs;
+        html += `<rect class="callout-hit" data-key="${esc(o.it.key)}" x="${rx.toFixed(1)}" y="${(ly - fs * 1.05).toFixed(1)}" width="${(o.w + 0.2 * fs).toFixed(1)}" height="${(fs * 1.4).toFixed(1)}" rx="${(3 * scale).toFixed(1)}"/>`;
+        html += `<text class="co1 ${sideKey}" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="${fs.toFixed(2)}" style="stroke-width:${sw}px">${esc(o.it.label)} <tspan class="v${o.vt.c}" font-size="${(fs * 0.9).toFixed(2)}">${o.vt.t}</tspan></text>`;
+      });
+    }
   }
   svg.innerHTML = html;
   animateView(svg, target);
