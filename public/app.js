@@ -115,6 +115,8 @@ function labelPoint(rings) {
   }
   return { pt: best, area: ba / 2 };
 }
+// 전국 지도에서 너무 작아 안에 글자를 못 넣는 시·도: 바다 쪽에 이름표를 두고 선으로 연결 (지도 좌표)
+const CALLOUT = { 서울: [178, 108], 세종: [124, 214], 대전: [124, 258] };
 const LABEL_NUDGE = { 경기: [24, -34], 인천: [-20, 6], 서울: [2, -2], 대전: [3, 4], 충북: [6, -6], 세종: [-4, -2] };
 
 function prepGeo() {
@@ -177,8 +179,30 @@ function renderMap() {
   // 라벨
   const fs = 12 * scale;
   const placed = [];
+  const valueText = (it) => {
+    // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0)
+    const mc = S.metric === 'mom' ? chg(curVal(it.s), prevVal(it.s), false) : null;
+    return { t: mc ? mc.t : fmt(curVal(it.s)), c: mc ? ' ' + mc.c : '' };
+  };
+  if (!sido) {
+    for (const it of items) {
+      const pos = CALLOUT[it.key];
+      if (!pos || !it.f.pt) continue;
+      const [lx, ly] = pos, [px, py] = it.f.pt, sw = (3 * scale).toFixed(2);
+      const vt = valueText(it);
+      const tw = Math.max(it.label.length * fs * 0.95, vt.t.length * fs * 0.55);
+      html += `<line class="leader" x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${(lx + 3 * scale).toFixed(1)}" y2="${ly.toFixed(1)}"/>`;
+      html += `<circle class="leader-dot" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(2.2 * scale).toFixed(2)}"/>`;
+      // 이름표도 누르면 그 시·도로 이동
+      html += `<rect class="callout-hit" data-key="${esc(it.key)}" x="${(lx - tw).toFixed(1)}" y="${(ly - fs * 1.3).toFixed(1)}" width="${(tw + 4 * scale).toFixed(1)}" height="${(fs * 2.5).toFixed(1)}" rx="${(3 * scale).toFixed(1)}"/>`;
+      html += `<text class="co" x="${lx.toFixed(1)}" y="${(ly - fs * 0.55).toFixed(1)}" font-size="${fs.toFixed(2)}" style="stroke-width:${sw}px">${esc(it.label)}</text>`;
+      html += `<text class="co v${vt.c}" x="${lx.toFixed(1)}" y="${(ly + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${sw}px">${vt.t}</text>`;
+      placed.push([lx - tw / 2, ly, tw / 2 + 2 * scale, fs * 1.2], [px, py, 2 * scale, 2 * scale]);
+    }
+  }
   const order = items.slice().sort((a, b) => (sgg && a.key === sgg ? -1 : sgg && b.key === sgg ? 1 : (curVal(b.s) ?? 0) - (curVal(a.s) ?? 0)));
   for (const it of order) {
+    if (!sido && CALLOUT[it.key]) continue;
     const minArea = (sido ? 700 : 250) * scale * scale;
     if (!it.f.pt || (it.f.area < minArea && !(sgg && it.key === sgg))) continue;
     const nud = !sido && LABEL_NUDGE[it.key] ? LABEL_NUDGE[it.key] : [0, 0];
@@ -187,10 +211,8 @@ function renderMap() {
     if (placed.some((b) => Math.abs(b[0] - x) < b[2] + hw && Math.abs(b[1] - y) < b[3] + hh)) continue;
     placed.push([x, y, hw, hh]);
     html += `<text x="${x.toFixed(1)}" y="${(y - fs * 0.55).toFixed(1)}" font-size="${fs.toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${esc(it.label)}</text>`;
-    // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0)
-    const mc = S.metric === 'mom' ? chg(curVal(it.s), prevVal(it.s), false) : null;
-    const vtxt = mc ? mc.t : fmt(curVal(it.s));
-    html += `<text class="v${mc ? ' ' + mc.c : ''}" x="${x.toFixed(1)}" y="${(y + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${vtxt}</text>`;
+    const vt = valueText(it);
+    html += `<text class="v${vt.c}" x="${x.toFixed(1)}" y="${(y + fs * 0.6).toFixed(1)}" font-size="${(fs * 0.9).toFixed(2)}" style="stroke-width:${(3 * scale).toFixed(2)}px">${vt.t}</text>`;
   }
   svg.innerHTML = html;
   animateView(svg, target);
@@ -224,14 +246,14 @@ function renderLegend(th) {
 function bindMap() {
   const svg = $('#map'), tip = $('#tip'), wrap = $('#mapWrap');
   svg.addEventListener('click', (e) => {
-    const p = e.target.closest('path');
+    const p = e.target.closest('path, rect.callout-hit');
     if (!p) return;
     if (p.dataset.sido) return select(p.dataset.sido, null);
     const k = p.dataset.key; if (!k) return;
     if (!S.sel.sido) select(k, null); else select(S.sel.sido, k === S.sel.sgg ? null : k);
   });
   svg.addEventListener('mousemove', (e) => {
-    const p = e.target.closest('path[data-key], path[data-sido]');
+    const p = e.target.closest('path[data-key], path[data-sido], rect[data-key]');
     if (!p) { tip.hidden = true; return; }
     const r = wrap.getBoundingClientRect();
     let name, s;
