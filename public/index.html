@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eeefea">
+<title>분양시장 레이더</title>
+<meta name="description" content="시·군·구별 미분양, 청약 결과, 향후 입주예정 물량을 지도에서 한 번에 봅니다.">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>분양시장 레이더</h1>
+      <p class="sub">미분양 · 청약 결과 · 향후 공급을 시·군·구 단위로</p>
+    </div>
+  </div>
+  <div class="top-meta">
+    <div class="nat"><span class="k">전국 미분양</span><b id="natVal">–</b><span id="natChg" class="chg"></span></div>
+    <span id="srcBadge" class="badge">불러오는 중…</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="card mapcard">
+    <div class="map-head">
+      <nav id="crumb" class="crumb" aria-label="현재 위치"></nav>
+      <div class="seg" role="tablist" aria-label="지도 색상 기준">
+        <button class="on" data-metric="level">미분양 호수</button>
+        <button data-metric="mom">전월 대비</button>
+      </div>
+    </div>
+    <div id="mapWrap" class="map-wrap">
+      <svg id="map" role="img" aria-label="대한민국 지도"></svg>
+      <div id="legend" class="legend"></div>
+      <div id="tip" class="tip" hidden></div>
+    </div>
+    <div class="list-head">
+      <h3 id="listTitle">시·도별 미분양</h3>
+      <span id="listMonth" class="muted"></span>
+    </div>
+    <ol id="rank" class="rank"></ol>
+  </section>
+
+  <section class="detail">
+    <div class="card hero">
+      <div class="hero-top">
+        <div>
+          <div id="dLevel" class="eyebrow">전국</div>
+          <h2 id="dName">대한민국</h2>
+        </div>
+        <button id="backBtn" class="ghost" hidden>← 상위 지역</button>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><span class="k">미분양</span><b id="kNow">–</b><span id="kMonth" class="muted"></span></div>
+        <div class="kpi"><span class="k">전월 대비</span><b id="kMom">–</b></div>
+        <div class="kpi"><span class="k">전년 동월 대비</span><b id="kYoy">–</b></div>
+        <div class="kpi"><span class="k">최근 3년 최고</span><b id="kPeak">–</b><span id="kPeakM" class="muted"></span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-head">
+        <h3>미분양 추이</h3>
+        <div class="seg small" id="rangeSeg">
+          <button class="on" data-range="36">3년</button>
+          <button data-range="60">5년</button>
+          <button data-range="120">10년</button>
+        </div>
+      </div>
+      <div id="trend" class="chart"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-head">
+        <h3>향후 공급</h3>
+        <span class="muted small-t">입주예정은 시·도 단위 자료</span>
+      </div>
+      <div id="supply"></div>
+      <div id="permit"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-head">
+        <h3>청약 결과 <span class="muted">최근 3년</span></h3>
+        <select id="sortSel" aria-label="정렬">
+          <option value="date">최신순</option>
+          <option value="rate">경쟁률 높은순</option>
+          <option value="size">공급세대 많은순</option>
+        </select>
+      </div>
+      <div id="cy"></div>
+    </div>
+
+    <footer class="foot">
+      <p>출처: 국토교통부 시·군·구별 미분양현황(KOSIS), 한국부동산원 청약홈 분양정보·경쟁률(공공데이터포털), 한국부동산원·부동산R114 공동주택 입주예정물량, 행정경계 vuski/admdongkor(2026.10 기준).</p>
+      <p>행정구역은 2026.10 기준(전남광주통합특별시, 인천 제물포·영종·서해·검단구)이며 이전 자료는 새 구역에 맞춰 이어 붙였습니다. 인천 개편 전 청약 주소는 동 이름으로 새 구에 배정한 근사값입니다.</p>
+    </footer>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "name": "bunyang-radar",
+  "private": true,
+  "type": "module",
+  "description": "시·군·구별 미분양·청약 결과·향후 공급 조회 사이트 (GitHub Pages + GitHub Actions)",
+  "scripts": { "fetch": "node scripts/fetch-data.mjs" },
+  "engines": { "node": ">=20" }
+}
