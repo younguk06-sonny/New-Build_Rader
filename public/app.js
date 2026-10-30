@@ -959,7 +959,19 @@ async function renderCy() {
     const chip = !c ? '' : c.shortModels > 0 ? `<span class="chip short">미달 ${c.shortModels}/${c.models}개 타입</span>` : c.avg1 >= 10 ? '<span class="chip hot">1순위 마감</span>' : c.avg1 >= 1 ? '<span class="chip">1순위 마감</span>' : '<span class="chip">2순위</span>';
     const nm = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.name)}</a>` : esc(it.name);
     const rateHtml = c && c.supply ? `<b>${c.avg1.toFixed(c.avg1 >= 100 ? 0 : 1)} : 1</b><span>1순위 평균 · 최고 ${c.max1.toFixed(c.max1 >= 100 ? 0 : 1)}</span>` : `<b class="muted">–</b><span>경쟁률 없음</span>`;
-    return `<div class="cy-item"><div class="nm">${nm}${chip}</div><div class="rate">${rateHtml}</div><div class="meta">${!sgg && it.sgg ? esc(it.sgg) + ' · ' : ''}${esc(it.date || '')} 공고 · ${fmt(it.total)}세대${it.kind ? ' · ' + esc(it.kind) : ''}${it.mvn ? ' · 입주 ' + esc(fmtM(String(it.mvn))) : ''}</div></div>`;
+    // 공급 평형별 분양가·평당가 (같은 전용면적의 A·B·C 타입은 묶어서 최저~최고)
+    let typesHtml = '';
+    if (it.types && it.types.length) {
+      const g = new Map();
+      for (const [ex, sup, price, hh] of it.types) {
+        const k = Math.round(ex); const o = g.get(k) || { ex: k, sup: [], price: [], py: [], hh: 0 };
+        if (sup) o.sup.push(sup); if (price) o.price.push(price); if (price && sup) o.py.push(price / (sup / 3.3058)); o.hh += hh || 0; g.set(k, o);
+      }
+      const rng = (a, f) => { if (!a.length) return '–'; const lo = Math.min(...a), hi = Math.max(...a); return lo === hi || Math.abs(hi - lo) / hi < 0.005 ? f(lo) : `${f(lo)}~${f(hi)}`; };
+      const rows = [...g.values()].sort((a, b) => a.ex - b.ex).map((o) => `<tr><td>${o.ex}㎡<span class="muted"> · ${o.sup.length ? Math.round(Math.max(...o.sup) / 3.3058) + '평' : ''}</span></td><td class="r">${fmt(o.hh)}세대</td><td class="r"><b>${rng(o.price, (v) => fmtWon(Math.round(v)))}</b></td><td class="r">${rng(o.py, (v) => fmt(Math.round(v)) + '만')}</td></tr>`).join('');
+      typesHtml = `<div class="ty"><table><thead><tr><th>전용 · 공급평형</th><th class="r">세대</th><th class="r">분양가(최고)</th><th class="r">평당가</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+    return `<div class="cy-item"><div class="nm">${nm}${chip}</div><div class="rate">${rateHtml}</div><div class="meta">${!sgg && it.sgg ? esc(it.sgg) + ' · ' : ''}${esc(it.date || '')} 공고 · ${fmt(it.total)}세대${it.kind ? ' · ' + esc(it.kind) : ''}${it.mvn ? ' · 입주 ' + esc(fmtM(String(it.mvn))) : ''}</div>${typesHtml}</div>`;
   };
   // 공고 연도별 묶음: 올해 / 작년 / 재작년 / 그 이전
   const Y = new Date().getFullYear();

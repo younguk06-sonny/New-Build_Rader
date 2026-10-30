@@ -278,6 +278,13 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 .cy-item .rate { grid-row: 1 / span 2; grid-column: 2; text-align: right; align-self: center; }
 .cy-item .rate b { font-size: 18px; font-weight: 780; display: block; line-height: 1.2; }
 .cy-item .rate span { font-size: 11px; color: var(--muted); }
+.cy-item .ty { grid-column: 1 / -1; margin-top: 6px; overflow-x: auto; }
+.cy-item .ty table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cy-item .ty th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; padding: 4px 6px; background: var(--bg); }
+.cy-item .ty th:first-child { border-radius: 6px 0 0 6px; } .cy-item .ty th:last-child { border-radius: 0 6px 6px 0; }
+.cy-item .ty td { padding: 4px 6px; border-top: 1px solid var(--line-2); white-space: nowrap; }
+.cy-item .ty tr:first-child td { border-top: 0; }
+.cy-item .ty .r { text-align: right; }
 .chip { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: 1px; border: 1px solid var(--line); color: var(--ink-2); font-weight: 600; }
 .chip.short { border-color: var(--up); color: var(--up); }
 .chip.hot { background: var(--accent); border-color: var(--accent); color: var(--card); }

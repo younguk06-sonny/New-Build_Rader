@@ -24,6 +24,7 @@ const RECHECK_DAYS = 45; // 최근 공고는 경쟁률이 바뀔 수 있어 다�
 const ODCLOUD = process.env.ODCLOUD_BASE || 'https://api.odcloud.kr/api';
 const DETAIL = '/ApplyhomeInfoDetailSvc/v1/getAPTLttotPblancDetail';
 const CMPET = '/ApplyhomeInfoCmpetRtSvc/v1/getAPTLttotPblancCmpet';
+const MDL = '/ApplyhomeInfoDetailSvc/v1/getAPTLttotPblancMdl';
 const SIDOS = ['서울','인천','경기','강원','충남','세종','충북','경북','대전','전북','대구','울산','전남광주','경남','부산','제주'];
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -232,6 +233,26 @@ if (key) {
     for (const id of Object.keys(cache)) if (!idSet.has(id)) delete cache[id]; // 3년 지난 단지 정리
     await writeJSON(CACHE, cache);
 
+    // 주택형별 분양가(공급면적·최고 분양가·세대수): 공고 후 바뀌지 않으므로 한 번만 받음
+    const MDL_CACHE = path.join(ROOT, 'cache', 'mdl.json');
+    const mdl = await readJSON(MDL_CACHE, {});
+    const needM = notices.filter((r) => !mdl[r.HOUSE_MANAGE_NO || r.PBLANC_NO]);
+    log('주택형 조회 필요', needM.length, '건');
+    let mfails = 0, msample = null;
+    await pool(needM, 4, async (r) => {
+      const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO;
+      try {
+        const rows = await paged(key, MDL, { 'cond[HOUSE_MANAGE_NO::EQ]': id });
+        if (!msample && rows[0]) msample = Object.keys(rows[0]);
+        // [전용㎡, 공급㎡, 최고 분양가(만원), 일반+특별 세대]
+        mdl[id] = rows.map((x) => [num(String(x.HOUSE_TY || '').replace(/[A-Za-z]/g, '')), num(x.SUPLY_AR), num(x.LTTOT_TOP_AMOUNT), (num(x.SUPLY_HSHLDCO) || 0) + (num(x.SPSPLY_HSHLDCO) || 0)])
+          .filter((t) => t[0]);
+      } catch (e) { mfails++; }
+    });
+    for (const id of Object.keys(mdl)) if (!idSet.has(id)) delete mdl[id];
+    await writeJSON(MDL_CACHE, mdl);
+    if (msample) meta.mdlSample = msample;
+
     // 시·도별 파일
     const bySido = Object.fromEntries(SIDOS.map((s) => [s, []]));
     let unmatched = 0; const noSgg = [];
@@ -249,6 +270,7 @@ if (key) {
         mvn: r.MVN_PREARNGE_YM || null,
         url: /^https?:\/\//.test(r.PBLANC_URL || '') ? r.PBLANC_URL : null,
         comp: cache[id]?.sum || null,
+        types: mdl[id] || null,
       });
     }
     const fetchedAt = new Date().toISOString();
@@ -256,7 +278,7 @@ if (key) {
       items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
       await writeJSON(path.join(OUT, 'cheongyak', `${sd}.json`), { sido: sd, from, fetchedAt, items });
     }
-    meta.cheongyak = { ok: fails === 0, at: fetchedAt, from, notices: notices.length, unmatched, noSgg: noSgg.length, noSggSample: noSgg.slice(0, 10), compFails: fails };
+    meta.cheongyak = { ok: fails === 0, at: fetchedAt, from, notices: notices.length, unmatched, noSgg: noSgg.length, noSggSample: noSgg.slice(0, 10), compFails: fails, typeFails: mfails };
     if (sample) meta.compSample = Object.keys(sample); // 경쟁률 응답 필드 이름 확인용(값은 저장 안 함)
     log('청약 저장 완료 · 지역 미배정', unmatched, '· 경쟁률 실패', fails);
     if (fails > need.length * 0.3 && need.length > 10) errors.push(`청약 경쟁률 조회 실패 ${fails}/${need.length}`);
