@@ -8,8 +8,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchSeries, fetchByFirstClass, search, meta as kosisMeta } from '../lib/kosis.mjs';
-import { KOSIS_SOURCES, SUPPLY_SOURCES } from '../lib/sources.mjs';
+import { fetchSeries, fetchByFirstClass, search, call as kosisCall, meta as kosisMeta } from '../lib/kosis.mjs';
+import { KOSIS_SOURCES, SUPPLY_SOURCES, POPULATION_SOURCE } from '../lib/sources.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
 import { parseRegion } from '../lib/region.mjs';
 import { getJSON, pool } from '../lib/http.mjs';
@@ -110,6 +110,49 @@ if (process.env.KOSIS_KEY) {
     } catch (e) { errors.push(`공급 ${name}: ${e.message}`); meta.supply[name] = { ok: false, tbl: src.tblId, error: e.message }; }
   }
   await writeJSON(path.join(OUT, 'supply-index.json'), { list: supplyList, labels: Object.fromEntries(Object.entries(SUPPLY_SOURCES).map(([k, v]) => [k, v.label])) });
+
+  // 인구: 최신 1개월, 시·도와 시·군·구별 총인구
+  try {
+    const src = POPULATION_SOURCE;
+    let raw = null, lastErr = null;
+    for (const lv of [1, 2]) {
+      const extra = { prdSe: 'M', newEstPrdCnt: '1' };
+      for (let k = 1; k <= lv; k++) extra[`objL${k}`] = 'ALL';
+      try { raw = await kosisCall(src, extra); break; } catch (e) { lastErr = e; }
+    }
+    if (!raw) throw lastErr || new Error('인구 응답 없음');
+    const items = [...new Set(raw.map((r) => (r.ITM_NM || '').trim()))];
+    const itm = items.find((t) => /총인구/.test(t)) || items.find((t) => /계|인구/.test(t)) || items[0];
+    const rows = raw.filter((r) => (r.ITM_NM || '').trim() === itm);
+    // 행정구역 코드 앞 2자리 = 시·도. 시·도 행(뒤가 0)으로 이름표 만들기
+    const code = (r) => String(r.C1 || '');
+    const sidoName = {};
+    for (const r of rows) { const c = code(r); if (c.length >= 2 && /^\d+$/.test(c) && /^0+$/.test(c.slice(2))) sidoName[c.slice(0, 2)] = (r.C1_NM || '').trim(); }
+    const SHORT = { 서울특별시: '서울', 부산광역시: '부산', 대구광역시: '대구', 인천광역시: '인천', 대전광역시: '대전', 울산광역시: '울산', 세종특별자치시: '세종', 경기도: '경기', 강원도: '강원', 강원특별자치도: '강원', 충청북도: '충북', 충청남도: '충남', 전라북도: '전북', 전북특별자치도: '전북', 전남광주통합특별시: '전남광주', 광주광역시: '전남광주', 전라남도: '전남광주', 경상북도: '경북', 경상남도: '경남', 제주특별자치도: '제주' };
+    const pop = { sido: {}, sgg: {} };
+    let month = '';
+    for (const r of rows) {
+      const c = code(r), v = r.DT == null || r.DT === '-' ? null : Number(r.DT);
+      if (v == null || c.length < 5) continue;
+      month = String(r.PRD_DE || month);
+      const sd = SHORT[sidoName[c.slice(0, 2)]];
+      if (!sd) continue;
+      const nm = (r.C1_NM || '').trim();
+      if (/^0+$/.test(c.slice(2))) { pop.sido[sd] = (pop.sido[sd] || 0) + v; continue; } // 광주+전남은 합산
+      if (sd === '세종') { pop.sgg['세종'] = { 세종시: pop.sido['세종'] || v }; continue; }
+      const name = nm.replace(/특례시$/, '시').split(' ').pop();
+      if (!VALID[sd]?.has(name)) continue; // 일반구(장안구 등)·옛 행정구역은 건너뜀
+      (pop.sgg[sd] ||= {})[name] = v;
+    }
+    if (pop.sgg['세종'] && pop.sido['세종']) pop.sgg['세종'].세종시 = pop.sido['세종'];
+    const nSgg = Object.values(pop.sgg).reduce((a, o) => a + Object.keys(o).length, 0);
+    if (Object.keys(pop.sido).length < 10) throw new Error(`시·도 인구가 너무 적음(${Object.keys(pop.sido).length}) · 예: ${rows.slice(0, 3).map((r) => code(r) + ' ' + r.C1_NM).join(', ')}`);
+    await writeJSON(path.join(OUT, 'population.json'), { source: '행정안전부 주민등록인구(KOSIS ' + src.tblId + ')', item: itm, month, ...pop });
+    const missing = [];
+    for (const [sd, set] of Object.entries(VALID)) for (const n of set) if (pop.sgg[sd]?.[n] == null) missing.push(sd + ' ' + n);
+    meta.population = { ok: true, month, item: itm, sido: Object.keys(pop.sido).length, sgg: nSgg, missing: missing.slice(0, 30), missingCount: missing.length };
+    log('인구', month, '시·도', Object.keys(pop.sido).length, '시·군·구', nSgg, '빠짐', missing.length);
+  } catch (e) { errors.push('인구: ' + e.message); meta.population = { ok: false, error: e.message }; }
 } else {
   log('KOSIS_KEY 없음 — 미분양·인허가 건너뜀');
 }

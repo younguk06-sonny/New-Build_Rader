@@ -177,6 +177,9 @@ function colorMom(cur, prev) {
   return `var(--d${k})`;
 }
 
+// 인구 (주민등록인구, 최신 월)
+function popOf(sido, sgg) { const P = S.pop; if (!P) return null; return sgg ? (P.sgg?.[sido]?.[sgg] ?? null) : (sido ? (P.sido?.[sido] ?? null) : Object.values(P.sido || {}).reduce((a, b) => a + b, 0) || null); }
+function fmtPop(v) { if (v == null) return '–'; if (v >= 10000) { const m = v / 10000; return (m >= 100 ? Math.round(m).toLocaleString('ko-KR') : m.toFixed(1)) + '만'; } return fmt(v); }
 function curVal(s) { return s ? s[s.length - 1] : null; }
 function prevVal(s) { return s ? s[s.length - 2] : null; }
 
@@ -187,14 +190,14 @@ function renderMap() {
   let html = '';
   let items; // {f, s, key}
   if (!sido) {
-    items = S.geo.sido.map((f) => ({ f, s: S.sido[f.sd], key: f.sd, label: f.sd }));
+    items = S.geo.sido.map((f) => ({ f, s: S.sido[f.sd], key: f.sd, label: f.sd, pop: popOf(f.sd) }));
   } else {
-    items = S.geo.sgg.filter((f) => f.sd === sido).map((f) => ({ f, s: S.sgg[sido][f.n], key: f.n, label: f.n }));
+    items = S.geo.sgg.filter((f) => f.sd === sido).map((f) => ({ f, s: S.sgg[sido][f.n], key: f.n, label: f.n, pop: popOf(sido, f.n) }));
     for (const f of S.geo.sido) if (f.sd !== sido) html += `<path class="rg fade" d="${f.d}" data-sido="${esc(f.sd)}"/>`;
   }
-  const th = bins(items.map((x) => curVal(x.s)));
+  const th = S.metric === 'pop' ? bins(items.map((x) => x.pop)) : bins(items.map((x) => curVal(x.s)));
   for (const it of items) {
-    const fill = S.metric === 'level' ? colorLevel(curVal(it.s), th) : colorMom(curVal(it.s), prevVal(it.s));
+    const fill = S.metric === 'level' ? colorLevel(curVal(it.s), th) : S.metric === 'pop' ? colorLevel(it.pop, th) : colorMom(curVal(it.s), prevVal(it.s));
     const sel = sgg && it.key === sgg ? ' sel' : '';
     html += `<path class="rg${sel}" d="${it.f.d}" fill="${fill}" data-key="${esc(it.key)}"/>`;
   }
@@ -217,6 +220,7 @@ function renderMap() {
   const placed = [];
   const valueText = (it) => {
     // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0)
+    if (S.metric === 'pop') return { t: fmtPop(it.pop), c: '' };
     const mc = S.metric === 'mom' ? chg(curVal(it.s), prevVal(it.s), false) : null;
     return { t: mc ? mc.t : fmt(curVal(it.s)), c: mc ? ' ' + mc.c : '' };
   };
@@ -272,7 +276,9 @@ function animateView(svg, target) {
 
 function renderLegend(th) {
   const el = $('#legend');
-  if (S.metric === 'level') {
+  if (S.metric === 'pop') {
+    el.innerHTML = `<span>주민등록인구 (${esc(fmtM(S.pop?.month || ''))})</span><div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>적음</span><span>${fmtPop(th[2])}</span><span>${fmtPop(th[5])}+</span></div>`;
+  } else if (S.metric === 'level') {
     el.innerHTML = `<span>미분양 호수 (${fmtM(S.months.at(-1))})</span><div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>적음</span><span>${fmt(th[2])}</span><span>${fmt(th[5])}+</span></div>`;
   } else {
     el.innerHTML = `<span>전월 대비 증감률</span><div class="bar">${[-3,-2,-1,0,1,2,3].map((i) => `<i style="background:var(--d${i})"></i>`).join('')}</div><div class="ticks"><span>−15%</span><span>0</span><span>+15%</span></div>`;
@@ -292,11 +298,11 @@ function bindMap() {
     const p = e.target.closest('path[data-key], path[data-sido], rect[data-key]');
     if (!p) { tip.hidden = true; return; }
     const r = wrap.getBoundingClientRect();
-    let name, s;
-    if (p.dataset.sido) { name = p.dataset.sido; s = S.sido[name]; }
-    else { const it = S.mapItems.get(p.dataset.key); name = (S.sel.sido ? S.sel.sido + ' ' : '') + it.key; s = it.s; }
+    let name, s, pop;
+    if (p.dataset.sido) { name = p.dataset.sido; s = S.sido[name]; pop = popOf(name); }
+    else { const it = S.mapItems.get(p.dataset.key); name = (S.sel.sido ? S.sel.sido + ' ' : '') + it.key; s = it.s; pop = it.pop; }
     const c = chg(curVal(s), prevVal(s));
-    tip.innerHTML = `<b>${esc(name)}</b><br>미분양 ${fmt(curVal(s))}호 · 전월 <span>${c.t}</span>`;
+    tip.innerHTML = `<b>${esc(name)}</b><br>미분양 ${fmt(curVal(s))}호 · 전월 <span>${c.t}</span>${pop ? `<br>인구 ${fmt(pop)}명 · 1만 명당 미분양 ${(curVal(s) / pop * 1e4).toFixed(1)}호` : ''}`;
     tip.style.left = (e.clientX - r.left) + 'px'; tip.style.top = (e.clientY - r.top) + 'px';
     tip.hidden = false;
   });
@@ -348,6 +354,8 @@ function renderHero() {
   $('#kMom').innerHTML = kc(s[L - 2]);
   $('#kYoy').innerHTML = kc(s[L - 13]);
   let pk = -1, pi = -1; for (let i = Math.max(0, L - 36); i < L; i++) if (s[i] != null && s[i] > pk) { pk = s[i]; pi = i; }
+  const pp = popOf(sido, sgg);
+  $('#dPop').textContent = pp ? `인구 ${fmt(pp)}명 (${fmtM(S.pop.month)}) · 1만 명당 미분양 ${now != null ? (now / pp * 1e4).toFixed(1) : '–'}호` : '';
   $('#kPeak').textContent = pk >= 0 ? fmt(pk) + '호' : '–';
   $('#kPeakM').textContent = pi >= 0 ? fmtM(S.months[pi]) + (now != null && pk > 0 ? ` · 현재 ${Math.round(now / pk * 100)}%` : '') : '';
   const nat = S.nat, nc = chg(nat.at(-1), nat.at(-2));
@@ -666,6 +674,7 @@ async function init() {
     S.geo = geo; S.supply = sup;
     prepGeo();
     await loadUnsold();
+    try { S.pop = await getJSON('data/population.json'); } catch (_) { S.pop = null; }
   } catch (e) {
     $('#srcBadge').textContent = '데이터를 불러오지 못했습니다'; $('#srcBadge').classList.add('warn');
     console.error(e); return;
@@ -675,6 +684,7 @@ async function init() {
   else { b.textContent = `미분양 내장자료 · ${fmtM(S.months.at(-1))}`; b.classList.add('warn'); b.title = 'KOSIS 실시간 조회 실패: ' + (S.unsoldErr || ''); }
 
   setupAsOf();
+  if (!S.pop) document.querySelector('[data-metric="pop"]').hidden = true; // 인구 자료가 아직 없으면 버튼 숨김
   bindMap();
   $('#backBtn').onclick = () => select(S.sel.sgg ? S.sel.sido : null, null);
   document.querySelectorAll('#rangeSeg button').forEach((x) => x.onclick = () => { S.range = +x.dataset.range; document.querySelectorAll('#rangeSeg button').forEach((y) => y.classList.toggle('on', y === x)); renderTrend(); });
