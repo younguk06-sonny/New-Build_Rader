@@ -964,7 +964,7 @@ async function renderCy() {
     if (it.types && it.types.length) {
       const g = new Map();
       for (const [ex, sup, price, hh] of it.types) {
-        const k = Math.round(ex); const o = g.get(k) || { ex: k, sup: [], price: [], py: [], hh: 0 };
+        const k = Math.floor(ex + 1e-6); const o = g.get(k) || { ex: k, sup: [], price: [], py: [], hh: 0 };
         if (sup) o.sup.push(sup); if (price) o.price.push(price); if (price && sup) o.py.push(price / (sup / 3.3058)); o.hh += hh || 0; g.set(k, o);
       }
       const rng = (a, f) => { if (!a.length) return '–'; const lo = Math.min(...a), hi = Math.max(...a); return lo === hi || Math.abs(hi - lo) / hi < 0.005 ? f(lo) : `${f(lo)}~${f(hi)}`; };
