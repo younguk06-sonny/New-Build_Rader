@@ -400,7 +400,7 @@ function renderTrend() {
   const narrow = ($('#trend').clientWidth || 600) < 480;
   const xTick = S.range <= 12 ? (m) => (+m.slice(4) % 2 === 1 ? `${m.slice(2, 4)}.${m.slice(4)}` : null)
     : S.range <= 36 ? (m) => (m.slice(4) === '01' || m.slice(4) === '07' ? `${m.slice(2, 4)}.${m.slice(4)}` : null)
-    : (m) => (m.slice(4) === '01' && (S.range <= 60 || !narrow || +m.slice(0, 4) % 2 === 0) ? `${m.slice(0, 4)}` : null);
+    : (m) => (m.slice(4) === '01' ? (narrow && S.range > 60 ? `${m.slice(2, 4)}년` : `${m.slice(0, 4)}`) : null); // 좁은 화면 10년은 '17년'처럼 짧게
   drawChart($('#trend'), S.months.slice(-n), s.slice(-n), { height: 230, extremes: true, xTick });
 }
 
