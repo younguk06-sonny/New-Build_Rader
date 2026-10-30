@@ -127,18 +127,20 @@ if (process.env.KOSIS_KEY) {
     // 행정구역 코드 앞 2자리 = 시·도. 시·도 행(뒤가 0)으로 이름표 만들기
     const code = (r) => String(r.C1 || '');
     const sidoName = {};
-    for (const r of rows) { const c = code(r); if (c.length >= 2 && /^\d+$/.test(c) && /^0+$/.test(c.slice(2))) sidoName[c.slice(0, 2)] = (r.C1_NM || '').trim(); }
+    // 시·도 행: 코드 2자리(예: 11) 또는 뒤가 모두 0인 긴 코드(예: 1100000000). 00은 전국
+    const isSido = (c) => /^\d+$/.test(c) && c.slice(0, 2) !== '00' && (c.length === 2 || /^0+$/.test(c.slice(2)));
+    for (const r of rows) { const c = code(r); if (isSido(c)) sidoName[c.slice(0, 2)] = (r.C1_NM || '').trim(); }
     const SHORT = { 서울특별시: '서울', 부산광역시: '부산', 대구광역시: '대구', 인천광역시: '인천', 대전광역시: '대전', 울산광역시: '울산', 세종특별자치시: '세종', 경기도: '경기', 강원도: '강원', 강원특별자치도: '강원', 충청북도: '충북', 충청남도: '충남', 전라북도: '전북', 전북특별자치도: '전북', 전남광주통합특별시: '전남광주', 광주광역시: '전남광주', 전라남도: '전남광주', 경상북도: '경북', 경상남도: '경남', 제주특별자치도: '제주' };
     const pop = { sido: {}, sgg: {} };
     let month = '';
     for (const r of rows) {
       const c = code(r), v = r.DT == null || r.DT === '-' ? null : Number(r.DT);
-      if (v == null || c.length < 5) continue;
+      if (v == null || c.length < 2 || c.slice(0, 2) === '00') continue;
       month = String(r.PRD_DE || month);
       const sd = SHORT[sidoName[c.slice(0, 2)]];
       if (!sd) continue;
       const nm = (r.C1_NM || '').trim();
-      if (/^0+$/.test(c.slice(2))) { pop.sido[sd] = (pop.sido[sd] || 0) + v; continue; } // 광주+전남은 합산
+      if (isSido(c)) { pop.sido[sd] = (pop.sido[sd] || 0) + v; continue; } // 광주+전남은 합산
       if (sd === '세종') { pop.sgg['세종'] = { 세종시: pop.sido['세종'] || v }; continue; }
       const name = nm.replace(/특례시$/, '시').split(' ').pop();
       if (!VALID[sd]?.has(name)) continue; // 일반구(장안구 등)·옛 행정구역은 건너뜀
