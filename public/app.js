@@ -483,7 +483,9 @@ function bindMap() {
     if (p.dataset.sido) { name = p.dataset.sido; s = S.sido[name]; pop = popOf(name); }
     else { const it = S.mapItems.get(p.dataset.key); name = (S.sel.sido ? S.sel.sido + ' ' : '') + it.key; s = it.s; pop = it.pop; }
     const c = chg(curVal(s), prevVal(s));
-    tip.innerHTML = `<b>${esc(name)}</b><br>미분양 ${fmt(curVal(s))}호 · 전월 <span>${c.t}</span>${pop ? `<br>인구 ${fmt(pop)}명 · 1만 명당 미분양 ${(curVal(s) / pop * 1e4).toFixed(1)}호` : ''}`;
+    const sdK = p.dataset.sido || S.sel.sido || (p.dataset.key && !S.sel.sido ? p.dataset.key : null), sgK = !p.dataset.sido && S.sel.sido ? p.dataset.key : null;
+    const pjN = S.projects ? S.projects.projects.filter((q) => q.regions.some(([a, b]) => a === sdK && (!sgK || b === sgK))).length : 0;
+    tip.innerHTML = `<b>${esc(name)}</b>${pjN ? ` <span class="tip-pj">개발 호재 ${pjN}</span>` : ''}<br>미분양 ${fmt(curVal(s))}호 · 전월 <span>${c.t}</span>${pop ? `<br>인구 ${fmt(pop)}명 · 1만 명당 미분양 ${(curVal(s) / pop * 1e4).toFixed(1)}호` : ''}`;
     tip.style.left = (e.clientX - r.left) + 'px'; tip.style.top = (e.clientY - r.top) + 'px';
     tip.hidden = false;
   });
@@ -871,6 +873,31 @@ function renderTrade() {
     </tbody></table></div>` : (sgg ? '' : '<p class="note">시·군·구를 고르면 최근 실거래 목록이 나옵니다.</p>');
 }
 
+/* ---------- 개발 호재 ---------- */
+const PJ_STATUS_CLASS = { '운영': 'st-run', '부분 운영': 'st-run', '공사': 'st-build', '인허가·설계': 'st-plan', '계획': 'st-idea' };
+function renderProjects() {
+  const el = $('#pjBody'), P = S.projects;
+  if (!P) { el.innerHTML = '<div class="empty">개발 호재 자료를 불러오지 못했습니다.</div>'; return; }
+  const { sido, sgg } = S.sel;
+  const hit = (p) => sgg ? p.regions.some(([a, b]) => a === sido && b === sgg) : sido ? p.regions.some(([a]) => a === sido) : true;
+  const order = (s) => { const i = P.statusOrder.indexOf(s); return i < 0 ? 9 : i; };
+  const list = P.projects.filter(hit).sort((a, b) => order(a.status) - order(b.status));
+  const place = sgg || sido || '전국';
+  $('#pjMeta').textContent = `${P.asOf.replace(/-/g, '.')} 기준 · ${list.length}건`;
+  if (!list.length) { el.innerHTML = `<div class="empty">${esc(place)}을(를) 지나거나 포함하는 주요 사업이 목록에 없습니다.</div><p class="note">${esc(P.note)}</p>`; return; }
+  el.innerHTML = `<div class="pj-list">${list.map((p) => {
+    // 선택 지역과 같은 시·도의 지역은 강조
+    const regs = p.regions.map(([a, b]) => `<span class="rg-chip${(sgg ? a === sido && b === sgg : a === sido) ? ' on' : ''}">${esc(a === sido ? b : a + ' ' + b)}</span>`).join('');
+    return `<div class="pj">
+      <div class="pj-top"><span class="pj-type">${esc(p.type)}</span><b class="pj-name">${esc(p.name)}</b><span class="pj-st ${PJ_STATUS_CLASS[p.status] || ''}">${esc(p.status)}</span></div>
+      <div class="pj-sch">${esc(p.schedule)}</div>
+      <div class="pj-desc">${esc(p.desc)}</div>
+      <div class="pj-regs">${regs}</div>
+      <a class="pj-src" href="${esc(p.source.url)}" target="_blank" rel="noopener">출처: ${esc(p.source.title)} · ${esc(p.source.date)}</a>
+    </div>`;
+  }).join('')}</div><p class="note">${esc(P.note)}</p>`;
+}
+
 /* ---------- 청약 결과 ---------- */
 async function renderCy() {
   const el = $('#cy');
@@ -963,7 +990,7 @@ function select(sido, sgg, { push = true } = {}) {
   // 주소창에 지역 기록(공유용). 미리보기처럼 막힌 환경에서는 조용히 건너뜀
   if (push && !window.NO_HASH) { try { const h = sido ? '#' + encodeURIComponent(sido) + (sgg ? '/' + encodeURIComponent(sgg) : '') : ''; history.replaceState(null, '', h || location.pathname + location.search); } catch (_) {} }
   // 한 부분이 실패해도 나머지는 그려지도록
-  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderRegion, renderTrade, renderSupply, renderPermit, renderCy]) {
+  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderRegion, renderTrade, renderSupply, renderPermit, renderProjects, renderCy]) {
     try { const r = fn(); if (r && r.catch) r.catch((e) => console.error(fn.name, e)); } catch (e) { console.error(fn.name, e); }
   }
 }
@@ -982,6 +1009,7 @@ async function init() {
     try { S.pop = await getJSON('data/population.json'); } catch (_) { S.pop = null; }
     try { S.rs = await getJSON('data/region-stats.json'); } catch (_) { S.rs = null; }
     try { S.trade = await getJSON('data/trade.json'); } catch (_) { S.trade = null; }
+    try { S.projects = await getJSON('data/projects.json'); } catch (_) { S.projects = null; }
   } catch (e) {
     $('#srcBadge').textContent = '데이터를 불러오지 못했습니다'; $('#srcBadge').classList.add('warn');
     console.error(e); return;
