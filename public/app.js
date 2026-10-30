@@ -71,6 +71,42 @@ function buildUnsold(tab) {
   for (const sd of ORDER) { sido[sd] = cut(sido[sd]); for (const k in sgg[sd]) sgg[sd][k] = cut(sgg[sd][k]); }
   S.sido = sido; S.sgg = sgg;
   S.nat = S.months.map((_, i) => { let s = 0, any = false; for (const sd of ORDER) if (sido[sd][i] != null) { s += sido[sd][i]; any = true; } return any ? s : null; });
+  S.full = { months: S.months, sido: S.sido, sgg: S.sgg, nat: S.nat }; // 기준월을 바꿔도 원본은 그대로 보관
+}
+
+// 기준월 바꾸기: 그 달까지만 남겨서 지도·목록·추이·KPI가 모두 그 시점 기준이 되게 함
+function applyAsOf(idx) {
+  const F = S.full, cut = (a) => a.slice(0, idx + 1);
+  S.months = cut(F.months); S.nat = cut(F.nat);
+  S.sido = {}; S.sgg = {};
+  for (const sd of ORDER) { S.sido[sd] = cut(F.sido[sd]); S.sgg[sd] = {}; for (const k in F.sgg[sd]) S.sgg[sd][k] = cut(F.sgg[sd][k]); }
+  S.asOf = idx;
+}
+
+function setupAsOf() {
+  const sel = $('#asOf'), F = S.full, last = F.months.length - 1;
+  // 최근 달이 위로 오도록, 연도별로 묶어서 표시
+  let html = '', year = '';
+  for (let i = last; i >= 0; i--) {
+    const m = F.months[i], y = m.slice(0, 4);
+    if (y !== year) { if (year) html += '</optgroup>'; html += `<optgroup label="${y}년">`; year = y; }
+    html += `<option value="${i}">${fmtM(m)}${i === last ? ' (최신)' : ''}</option>`;
+  }
+  sel.innerHTML = html + '</optgroup>';
+  sel.value = String(last);
+  const go = (idx) => {
+    idx = Math.max(0, Math.min(last, idx));
+    applyAsOf(idx); sel.value = String(idx);
+    $('#asOfPrev').disabled = idx === 0; $('#asOfNext').disabled = idx === last;
+    $('#asOfLatest').hidden = idx === last;
+    document.body.classList.toggle('past', idx !== last);
+    select(S.sel.sido, S.sel.sgg, { push: false });
+  };
+  sel.onchange = () => go(+sel.value);
+  $('#asOfPrev').onclick = () => go(S.asOf - 1);
+  $('#asOfNext').onclick = () => go(S.asOf + 1);
+  $('#asOfLatest').onclick = () => go(last);
+  S.asOf = last; $('#asOfNext').disabled = true; $('#asOfLatest').hidden = true;
 }
 
 async function loadUnsold() {
@@ -638,6 +674,7 @@ async function init() {
   if (S.unsoldSrc === 'live') b.textContent = `미분양 KOSIS · ${fmtM(S.months.at(-1))} · 매일 자동 갱신`;
   else { b.textContent = `미분양 내장자료 · ${fmtM(S.months.at(-1))}`; b.classList.add('warn'); b.title = 'KOSIS 실시간 조회 실패: ' + (S.unsoldErr || ''); }
 
+  setupAsOf();
   bindMap();
   $('#backBtn').onclick = () => select(S.sel.sgg ? S.sel.sido : null, null);
   document.querySelectorAll('#rangeSeg button').forEach((x) => x.onclick = () => { S.range = +x.dataset.range; document.querySelectorAll('#rangeSeg button').forEach((y) => y.classList.toggle('on', y === x)); renderTrend(); });
