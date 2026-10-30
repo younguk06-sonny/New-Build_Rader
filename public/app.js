@@ -759,6 +759,58 @@ async function renderPermit() {
   for (const [i, ps, unit] of charts) drawChart($('#supChart' + i), ps.months.slice(-36), ps.vals.slice(-36), { type: 'bar', height: 130, unit });
 }
 
+/* ---------- 월별 분양 · 미분양 ---------- */
+async function loadCy(sd) {
+  if (S.cy.has(sd)) return S.cy.get(sd);
+  const d = (window.PRELOAD_CY && window.PRELOAD_CY[sd]) || await getJSON(`data/cheongyak/${encodeURIComponent(sd)}.json`);
+  S.cy.set(sd, d); return d;
+}
+async function renderFlow() {
+  const el = $('#flow'), { sido, sgg } = S.sel;
+  const sds = sido ? [sido] : ORDER;
+  let lists;
+  try { lists = await Promise.all(sds.map(loadCy)); }
+  catch (e) { el.innerHTML = `<div class="empty">청약 자료를 불러오지 못했습니다.${window.PREVIEW ? '' : ' 다음 자동 수집 뒤 다시 확인해 주세요.'}</div>`; return; }
+  if (S.sel.sido !== sido || S.sel.sgg !== sgg) return;
+  // 분양(입주자모집공고) 단지 — 임대는 제외
+  const items = lists.flatMap((d) => d.items).filter((it) => (!sgg || it.sgg === sgg) && !/임대/.test(it.kind || ''));
+  const from = (lists[0]?.from || '').replace(/-/g, '').slice(0, 6);
+  const by = new Map();
+  for (const it of items) {
+    const m = String(it.date || '').replace(/-/g, '').slice(0, 6); if (!m) continue;
+    const o = by.get(m) || { n: 0, units: 0, sn: 0, su: 0, nc: 0 };
+    o.n++; o.units += it.total || 0;
+    if (it.comp && it.comp.supply > 0) { o.nc++; if (it.comp.shortModels > 0) { o.sn++; o.su += it.comp.shortUnits || 0; } }
+    by.set(m, o);
+  }
+  const ser = currentSeries(), M = S.months, L = M.length;
+  const rows = [];
+  for (let k = 0; k < 12 && L - 1 - k >= 0; k++) {
+    const i = L - 1 - k, m = M[i], o = by.get(m);
+    rows.push({ m, o: o || (m >= from ? { n: 0, units: 0, sn: 0, su: 0, nc: 0 } : null), u: ser[i], du: ser[i] != null && ser[i - 1] != null ? ser[i] - ser[i - 1] : null });
+  }
+  const cur = rows[0];
+  const tot = rows.reduce((a, r) => { if (r.o) { a.n += r.o.n; a.units += r.o.units; a.sn += r.o.sn; a.su += r.o.su; } return a; }, { n: 0, units: 0, sn: 0, su: 0 });
+  const maxU = Math.max(1, ...rows.map((r) => r.o?.units || 0));
+  const place = sgg || sido || '전국';
+  const signed = (v) => v == null ? '–' : `<span class="${v > 0 ? 'up' : v < 0 ? 'down' : 'flat'}">${v > 0 ? '+' : v < 0 ? '−' : '±'}${fmt(Math.abs(v))}</span>`;
+  const ch = cur.o;
+  el.innerHTML = `
+    <div class="flow-kpis">
+      <div><span class="k">${fmtM(cur.m)} 분양</span><b>${ch ? `${fmt(ch.n)}건 · ${fmt(ch.units)}세대` : '자료 없음'}</b><span class="s">입주자모집공고 기준</span></div>
+      <div><span class="k">그중 청약 미달</span><b class="${ch && ch.sn ? 'up' : ''}">${ch ? `${fmt(ch.sn)}건 · ${fmt(ch.su)}세대` : '–'}</b><span class="s">1·2순위 접수 부족분</span></div>
+      <div><span class="k">${fmtM(cur.m)} 말 미분양</span><b>${fmt(cur.u)}호</b><span class="s">전월 대비 ${signed(cur.du)}</span></div>
+    </div>
+    <div class="tr-wrap flow-wrap"><table class="tr-table flow-table">
+      <thead><tr><th>월</th><th class="r">분양 단지</th><th>분양 세대</th><th class="r">미달 단지</th><th class="r">미달 세대</th><th class="r">월말 미분양</th><th class="r">증감</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr class="${r === cur ? 'cur' : ''}"><td>${fmtM(r.m)}</td>
+        ${r.o ? `<td class="r">${fmt(r.o.n)}</td><td><span class="fb"><i style="width:${(r.o.units / maxU * 100).toFixed(1)}%"></i><em style="width:${(r.o.su / maxU * 100).toFixed(1)}%"></em></span><span class="fv">${fmt(r.o.units)}</span></td><td class="r">${r.o.sn ? `<b class="up">${fmt(r.o.sn)}</b>` : '0'}</td><td class="r">${r.o.su ? `<b class="up">${fmt(r.o.su)}</b>` : '0'}</td>` : '<td class="r muted" colspan="4">청약 자료 범위 밖</td>'}
+        <td class="r">${fmt(r.u)}</td><td class="r">${signed(r.du)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>12개월 합계</td><td class="r">${fmt(tot.n)}</td><td><span class="fv">${fmt(tot.units)}</span></td><td class="r">${fmt(tot.sn)}</td><td class="r">${fmt(tot.su)}</td><td class="r" colspan="2">${rows.length > 1 && rows.at(-1).u != null && cur.u != null ? `12개월 ${signed(cur.u - (ser[L - 13] ?? rows.at(-1).u))}` : ''}</td></tr></tfoot>
+    </table></div>
+    <p class="note">${esc(place)} 기준. 분양은 청약홈 입주자모집공고(공고일 기준, 임대 제외), 청약 미달은 일반공급 1·2순위 접수가 공급 세대보다 적은 만큼입니다. 미분양은 국토교통부 지역 합계로, 단지별로는 공표되지 않아 개별 단지와 직접 연결되지는 않습니다. 막대: 파랑=분양 세대, 빨강=그중 미달 세대.</p>`;
+}
+
 /* ---------- 지역 여건: 거래량 · 인구·세대 · 연령 ---------- */
 function rsSeries(name) {
   const d = S.rs?.series?.[name]; if (!d) return null;
@@ -926,8 +978,7 @@ async function renderCy() {
   if (!all) {
     el.innerHTML = '<div class="skel" style="width:60%"></div><div class="skel"></div><div class="skel"></div><div class="skel" style="width:80%"></div>';
     try {
-      all = (window.PRELOAD_CY && window.PRELOAD_CY[sido]) || await getJSON(`data/cheongyak/${encodeURIComponent(sido)}.json`); // 시·도별 파일(매일 갱신)
-      S.cy.set(sido, all);
+      all = await loadCy(sido); // 시·도별 파일(매일 갱신)
     } catch (e) {
       if (S.sel.sido !== sido || S.sel.sgg !== sgg) return;
       const msg = window.PREVIEW ? '미리보기에는 청약 자료가 들어 있지 않습니다.<br><span class="small-t">GitHub에 올려 매일 자료 수집을 돌리면 이 자리에 최근 3년 청약 결과가 나옵니다.</span>' : e.status === 404 || e.code === 'no_server' ? '아직 청약 자료가 없습니다.<br><span class="small-t">저장소 시크릿에 DATA_GO_KR_KEY를 넣고 데이터 수집을 한 번 실행하면 표시됩니다.</span>' : `청약 결과를 불러오지 못했습니다.<br><span class="small-t">${esc(e.message)}</span>`;
@@ -1021,7 +1072,7 @@ function select(sido, sgg, { push = true } = {}) {
   // 주소창에 지역 기록(공유용). 미리보기처럼 막힌 환경에서는 조용히 건너뜀
   if (push && !window.NO_HASH) { try { const h = sido ? '#' + encodeURIComponent(sido) + (sgg ? '/' + encodeURIComponent(sgg) : '') : ''; history.replaceState(null, '', h || location.pathname + location.search); } catch (_) {} }
   // 한 부분이 실패해도 나머지는 그려지도록
-  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderRegion, renderTrade, renderSupply, renderPermit, renderProjects, renderCy]) {
+  for (const fn of [renderMap, renderRank, renderHero, renderTrend, renderFlow, renderRegion, renderTrade, renderSupply, renderPermit, renderProjects, renderCy]) {
     try { const r = fn(); if (r && r.catch) r.catch((e) => console.error(fn.name, e)); } catch (e) { console.error(fn.name, e); }
   }
 }

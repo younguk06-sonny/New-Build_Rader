@@ -218,7 +218,7 @@ if (key) {
     const cache = await readJSON(CACHE, {});
     const recent = ymd(new Date(Date.now() - RECHECK_DAYS * 864e5));
     const ids = notices.map((r) => r.HOUSE_MANAGE_NO || r.PBLANC_NO);
-    const need = notices.filter((r) => { const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO; const c = cache[id]; return !c || (r.RCRIT_PBLANC_DE || '') >= recent || !c.sum; });
+    const need = notices.filter((r) => { const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO; const c = cache[id]; return !c || (r.RCRIT_PBLANC_DE || '') >= recent || !c.sum || c.v !== 2; }); // v2: 미달 세대 포함
     log('경쟁률 조회 필요', need.length, '건 / 캐시', Object.keys(cache).length);
     let sample = null, fails = 0;
     await pool(need, 4, async (r) => {
@@ -226,7 +226,7 @@ if (key) {
       try {
         const rows = await paged(key, CMPET, { 'cond[HOUSE_MANAGE_NO::EQ]': id });
         if (!sample && rows[0]) sample = rows[0];
-        cache[id] = { at: ymd(new Date()), sum: summarizeCompetition(rows) };
+        cache[id] = { v: 2, at: ymd(new Date()), sum: summarizeCompetition(rows) };
       } catch (e) { fails++; }
     });
     const idSet = new Set(ids);

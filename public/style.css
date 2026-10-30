@@ -201,6 +201,18 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 .rs-kpis > div > span:last-child:not(.k) { font-size: 11.5px; font-weight: 600; }
 .rs-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .mini-h { font-size: 12px; color: var(--ink-2); font-weight: 650; margin-bottom: 2px; }
+.flow-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.flow-kpis > div { background: var(--bg); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; min-width: 0; }
+.flow-kpis .k { font-size: 11.5px; color: var(--muted); }
+.flow-kpis b { font-size: 16px; font-weight: 750; }
+.flow-kpis .s { font-size: 11px; color: var(--muted); }
+.tr-wrap.flow-wrap { max-height: none; }
+.flow-table tr.cur td { background: color-mix(in srgb, var(--accent) 8%, transparent); font-weight: 650; }
+.flow-table tfoot td { border-top: 2px solid var(--line); font-weight: 700; background: var(--bg); }
+.flow-table .fb { display: inline-block; position: relative; width: 90px; height: 8px; background: var(--line-2); border-radius: 4px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.flow-table .fb i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--s4); }
+.flow-table .fb em { position: absolute; left: 0; top: 0; bottom: 0; background: var(--up); }
+.flow-table .fv { display: inline-block; min-width: 46px; text-align: right; }
 .tr-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; border: 1px solid var(--line-2); border-radius: 10px; }
 .tr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .tr-table th { position: sticky; top: 0; background: var(--bg); text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px; font-size: 11.5px; }
@@ -318,6 +330,8 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
   .supply-grid { grid-template-columns: minmax(0, 1fr); }
   .cy-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rs-two { grid-template-columns: minmax(0, 1fr); }
+  .flow-kpis { grid-template-columns: minmax(0, 1fr); }
+  .flow-table .fb { width: 50px; }
   .rs-kpis b { font-size: 14px; }
   .rank li { grid-template-columns: 20px minmax(64px, 1fr) 1.2fr 58px 50px; gap: 6px; }
   .hero h2 { font-size: 22px; }
