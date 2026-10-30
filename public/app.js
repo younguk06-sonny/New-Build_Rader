@@ -836,7 +836,7 @@ function tradeOf() {
 }
 function renderTrade() {
   const el = $('#trBody'), T = S.trade;
-  if (!T) { el.innerHTML = `<div class="empty">${window.PREVIEW ? '미리보기에는 실거래가 자료가 들어 있지 않습니다.' : '실거래가 자료를 아직 받지 못했습니다. 공공데이터포털에서 <b>국토교통부_아파트 매매 실거래가 자료</b>를 활용신청하면 다음 자동 수집부터 채워집니다.'}</div>`; $('#trMeta').textContent = ''; return; }
+  if (!T || !T.complete) { el.innerHTML = `<div class="empty">${window.PREVIEW ? '미리보기에는 실거래가 자료가 들어 있지 않습니다.' : '실거래가 자료를 아직 받지 못했습니다. 공공데이터포털에서 <b>국토교통부_아파트 매매 실거래가 자료</b>를 활용신청하면 다음 자동 수집부터 채워집니다.'}</div>`; $('#trMeta').textContent = ''; return; }
   const place = S.sel.sgg || S.sel.sido || '전국';
   const t = tradeOf(); const v = t?.v;
   $('#trMeta').textContent = `${T.complete < 100 ? `3년치 채우는 중 ${T.complete}% · ` : ''}수집 ${String(T.fetchedAt || '').slice(0, 10)}`;

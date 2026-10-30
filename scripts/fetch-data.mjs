@@ -270,7 +270,7 @@ if (process.env.DATA_GO_KR_KEY) {
   try {
     const codes = await readJSON(path.join(ROOT, 'lib', 'lawd-codes.json'), {});
     const r = await collectTrades({ root: ROOT, codes, log });
-    if (r.months) {
+    if (r.months && r.complete > 0) { // 하나도 못 받았으면 파일을 만들지 않음(화면에 신청 안내 표시)
       const view = buildTradeView(r);
       await writeJSON(path.join(OUT, 'trade.json'), { source: '국토교통부 아파트 매매 실거래가(공공데이터포털)', fetchedAt: new Date().toISOString(), complete: r.complete, ...view });
     }
