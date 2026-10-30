@@ -332,7 +332,7 @@ function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호'
     const li = vals.length - 1; if (vals[li] != null) body += `<circle class="dot" cx="${x(li)}" cy="${y(vals[li])}" r="4"/>`;
   } else {
     const bw = Math.max(1, iw / n * 0.7);
-    vals.forEach((v, i) => { if (v == null) return; body += `<rect class="bar${i === n - 1 ? ' hl' : ''}" x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(0) - y(v)).toFixed(1)}" rx="1.5"/>`; });
+    vals.forEach((v, i) => { if (v == null || v < 0) return; body += `<rect class="bar${i === n - 1 ? ' hl' : ''}" x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(0) - y(v)).toFixed(1)}" rx="1.5"/>`; });
   }
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}${body}<line class="cross" y1="${m.t}" y2="${m.t + ih}" visibility="hidden"/><circle class="dot hv" r="4" visibility="hidden"/></svg><div class="ctip" hidden></div>`;
   const svg = el.querySelector('svg'), cross = svg.querySelector('.cross'), hv = svg.querySelector('.hv'), tip = el.querySelector('.ctip');
@@ -380,27 +380,32 @@ async function loadPermit() {
   if (S.permit !== undefined) return S.permit;
   S.permit = null;
   try {
-    const j = await getJSON('data/permit.json');
-    S.permit = j;
+    const idx = await getJSON('data/supply-index.json'); // 인허가·착공·분양 중 받아진 것
+    const list = [];
+    for (const name of idx.list || []) { try { list.push(await getJSON(`data/supply-${name}.json`)); } catch (_) {} }
+    S.permit = list.length ? { list } : { error: 'not_yet' };
   } catch (e) { S.permit = { error: e.status === 404 || e.code === 'no_server' ? 'not_yet' : 'error', message: e.message }; }
   return S.permit;
 }
 
 const TOTALS = new Set(['계', '합계', '총계', '소계', '전체', '']);
+const ALL_SIDO_NAMES = new Set([...ORDER.filter((x) => x !== '전남광주'), '광주', '전남', ...Object.values(LONG), '광주광역시', '전라남도', '강원도', '전라북도']);
 function pickPermitSeries(j, sido, sgg) {
   const rows = j.rows || [];
-  const names = (sd) => [sd, LONG[sd]];
+  const OLD = { 강원: ['강원도'], 전북: ['전라북도'], 제주: ['제주도'] };
+  const names = (sd) => [sd, LONG[sd], ...(OLD[sd] || [])];
   const has = (r, list) => list.some((n) => r[0] === n || r[1] === n || r[2] === n);
   let level = null, cand = [];
   if (sgg) { cand = rows.filter((r) => has(r, [sgg]) && (has(r, names(sido)) || rows.filter((x) => has(x, [sgg])).length)); if (cand.length) level = 'sgg'; }
   if (!cand.length && sido) { cand = rows.filter((r) => has(r, names(sido)) && !(r.slice(0, 3).some((c) => c && c !== sido && c !== LONG[sido] && /[시군구]$/.test(c)))); level = 'sido'; }
   if (!cand.length && sido === '전남광주') { cand = rows.filter((r) => has(r, ['광주', '광주광역시', '전남', '전라남도'])); level = 'sido'; }
-  if (!cand.length && !sido) { cand = rows.filter((r) => has(r, ['전국', '계', '합계'])); level = 'nat'; }
+  if (!cand.length && !sido) { cand = rows.filter((r) => has(r, ['전국'])); level = 'nat'; }
+  if (!cand.length && !sido) { cand = rows.filter((r) => r.slice(0, 3).some((c) => ALL_SIDO_NAMES.has(c))); level = 'nat'; } // 전국 행이 없으면 시·도 합계
   if (!cand.length) return null;
   // 같은 지역 안에서 '계' 성격의 분류·항목을 고름
   const groups = new Map();
   for (const r of cand) {
-    const regionNames = new Set([sgg, sido, LONG[sido], '광주', '광주광역시', '전남', '전라남도', '전국'].filter(Boolean));
+    const regionNames = new Set([sgg, sido, LONG[sido], '광주', '광주광역시', '전남', '전라남도', '전국', ...(level === 'nat' ? ALL_SIDO_NAMES : [])].filter(Boolean));
     const other = r.slice(0, 3).filter((c) => !regionNames.has(c));
     const key = other.join('|') + '#' + r[3];
     const score = other.filter((c) => TOTALS.has(c)).length * 2 + (/(계|합계|전체)/.test(r[3]) ? 1 : 0) - other.filter((c) => !TOTALS.has(c)).length;
@@ -414,22 +419,34 @@ function pickPermitSeries(j, sido, sgg) {
   return { level, months, vals: months.map((mm) => byM.get(mm)), label: best.label };
 }
 
+const SUPPLY_NOTE = {
+  permit: '인허가 후 보통 수개월~1년 안에 착공·분양으로 이어집니다.',
+  start: '착공 후 보통 수개월 안에 분양(선분양), 2~3년 뒤 입주합니다.',
+  sale: '실제 분양(입주자 모집) 실적입니다. 분양이 늘면 이후 미분양·입주 물량에 영향을 줍니다.',
+};
 async function renderPermit() {
   const el = $('#permit');
   const j = await loadPermit();
   if (!j) return;
   if (j.error) {
-    const msg = window.PREVIEW ? '미리보기에는 인허가 자료가 들어 있지 않습니다. GitHub에서 자료 수집을 돌리면 표시됩니다.' : j.error === 'not_yet' ? '아직 인허가 자료가 없습니다. 저장소 시크릿에 KOSIS_KEY를 넣고 데이터 수집을 한 번 실행하면 표시됩니다.' : `인허가 자료를 불러오지 못했습니다: ${esc(j.message)}`;
-    el.innerHTML = `<div class="sub-h">공급 선행지표 · 주택 인허가</div><div class="empty">${msg}</div>`;
+    const msg = window.PREVIEW ? '미리보기에는 공급 선행지표 자료가 들어 있지 않습니다. GitHub 사이트에서 표시됩니다.' : j.error === 'not_yet' ? '아직 공급 선행지표 자료가 없습니다. KOSIS_KEY를 넣고 데이터 수집을 실행하면 표시됩니다.' : `공급 선행지표를 불러오지 못했습니다: ${esc(j.message)}`;
+    el.innerHTML = `<div class="sub-h">공급 선행지표</div><div class="empty">${msg}</div>`;
     return;
   }
-  const ps = pickPermitSeries(j, S.sel.sido, S.sel.sgg);
-  if (!ps || !ps.months.length) { el.innerHTML = `<div class="sub-h">공급 선행지표 · ${esc(j.label)}</div><div class="empty">이 지역의 ${esc(j.label)} 자료가 통계표에 없습니다.</div>`; return; }
-  const lv = { sgg: S.sel.sgg, sido: S.sel.sido, nat: '전국' }[ps.level];
-  const last12 = ps.vals.slice(-12).reduce((a, b) => a + (b || 0), 0), prev12 = ps.vals.slice(-24, -12).reduce((a, b) => a + (b || 0), 0);
-  const c = chg(last12, prev12);
-  el.innerHTML = `<div class="sub-h"><span>공급 선행지표 · ${esc(j.label)} (${esc(lv)}${ps.level === 'sido' && S.sel.sgg ? ', 시·도 단위' : ''})</span><span class="muted">최근 12개월 ${fmt(last12)}${esc(j.unit || '호')} · 전년 대비 <span class="${c.c}">${c.t}</span></span></div><div class="chart" id="permitChart"></div><p class="note">${esc(j.tblNm || '')} ${ps.label ? '· ' + esc(ps.label) : ''} · 인허가 후 통상 수개월~1년 안에 분양, 2~3년 뒤 입주로 이어집니다.</p>`;
-  drawChart($('#permitChart'), ps.months.slice(-36), ps.vals.slice(-36), { type: 'bar', height: 150, unit: j.unit || '호' });
+  const blocks = [];
+  const charts = [];
+  j.list.forEach((d, i) => {
+    const ps = pickPermitSeries(d, S.sel.sido, S.sel.sgg);
+    if (!ps || !ps.months.length) { blocks.push(`<div class="sub-h">${esc(d.label)}</div><div class="empty">이 지역의 ${esc(d.label)} 자료가 통계표에 없습니다.</div>`); return; }
+    const lv = { sgg: S.sel.sgg, sido: S.sel.sido, nat: '전국' }[ps.level];
+    const last12 = ps.vals.slice(-12).reduce((a, b) => a + (b || 0), 0), prev12 = ps.vals.slice(-24, -12).reduce((a, b) => a + (b || 0), 0);
+    const c = chg(last12, prev12);
+    const unit = d.unit || '호';
+    blocks.push(`<div class="sub-h"><span>${esc(d.label)} <span class="muted">${esc(lv)}${ps.level === 'sido' && S.sel.sgg ? ' · 시·도 단위' : ''} · 월별</span></span><span class="muted">최근 12개월 ${fmt(last12)}${esc(unit)} · 전년 대비 <span class="${c.c}">${c.t}</span></span></div><div class="chart" id="supChart${i}"></div><p class="note">${esc(d.tblNm || '')}${ps.label ? ' · ' + esc(ps.label) : ''} · ${esc(fmtM(ps.months.at(-1)))}까지 · ${SUPPLY_NOTE[d.src] || ''}</p>`);
+    charts.push([i, ps, unit]);
+  });
+  el.innerHTML = `<div class="sub-h" style="margin-top:18px">공급 선행지표 <span class="muted">국토교통부 주택건설실적통계</span></div>` + blocks.join('');
+  for (const [i, ps, unit] of charts) drawChart($('#supChart' + i), ps.months.slice(-36), ps.vals.slice(-36), { type: 'bar', height: 130, unit });
 }
 
 /* ---------- 청약 결과 ---------- */

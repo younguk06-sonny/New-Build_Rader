@@ -9,7 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchSeries, fetchByFirstClass, search, meta as kosisMeta } from '../lib/kosis.mjs';
-import { KOSIS_SOURCES } from '../lib/sources.mjs';
+import { KOSIS_SOURCES, SUPPLY_SOURCES } from '../lib/sources.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
 import { parseRegion } from '../lib/region.mjs';
 import { getJSON, pool } from '../lib/http.mjs';
@@ -37,11 +37,30 @@ for (const f of GEO.sgg) (VALID[f.sd] ||= new Set()).add(f.n);
 
 const meta = await readJSON(path.join(OUT, 'meta.json'), {});
 meta.runAt = new Date().toISOString();
+delete meta.permit; delete meta.permitPrd; delete meta.kosisSearch; // 예전 항목 정리
 const errors = [];
 
 /* ---------- KOSIS: 미분양 · 인허가 ---------- */
 const TOTALS = new Set(['', '계', '합계', '총계', '전체', '소계']);
 const distinct = (rows, i, n = 40) => [...new Set(rows.map((r) => r[i]))].slice(0, n);
+// 월별 누계 → 월별 값 (같은 해 안에서 전월 누계를 뺌, 1월은 그대로)
+function decumulate(rows) {
+  const key = (r) => r.slice(0, 4).join('|');
+  const by = new Map();
+  for (const r of rows) { const k = key(r); if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
+  const out = [];
+  for (const list of by.values()) {
+    list.sort((a, b) => a[4].localeCompare(b[4]));
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i], p = list[i - 1];
+      const sameYear = p && p[4].slice(0, 4) === r[4].slice(0, 4) && +r[4].slice(4) === +p[4].slice(4) + 1;
+      let v = r[5];
+      if (r[4].slice(4) !== '01') v = sameYear && v != null && p[5] != null ? v - p[5] : null;
+      out.push([...r.slice(0, 5), v]);
+    }
+  }
+  return out;
+}
 
 if (process.env.KOSIS_KEY) {
   try {
@@ -67,21 +86,26 @@ if (process.env.KOSIS_KEY) {
     log('미분양', months.at(-1), map.size, '행');
   } catch (e) { errors.push('미분양: ' + e.message); meta.unsold = { ok: false, error: e.message }; }
 
-  try {
-    const j = await fetchSeries(KOSIS_SOURCES.permit, 48);
-    const fetchedAt = new Date().toISOString();
-    await writeJSON(path.join(OUT, 'permit.json'), { src: 'permit', label: KOSIS_SOURCES.permit.label, tblId: KOSIS_SOURCES.permit.tblId, tblNm: j.tblNm, unit: j.unit, prdSe: j.info.prdSe, rows: j.rows, fetchedAt });
-    // 표 구조 확인용 요약(분류 이름 일부)
-    meta.permit = { ok: true, at: fetchedAt, tbl: j.tblNm, rows: j.rows.length, ...j.info, c1: distinct(j.rows, 0), c2: distinct(j.rows, 1, 20), c3: distinct(j.rows, 2, 20), items: distinct(j.rows, 3, 20) };
-    log('인허가', j.tblNm, j.rows.length, '행', j.info);
-  } catch (e) { errors.push('인허가: ' + e.message); meta.permit = { ok: false, error: e.message }; }
-
-  // 시·군·구 단위 인허가·착공 통계표 후보 찾기(참고용)
-  meta.kosisSearch = {};
-  try { const pm = await kosisMeta(KOSIS_SOURCES.permit, 'PRD'); meta.permitPrd = pm.slice(0, 5); } catch (e) { meta.permitPrd = 'error: ' + e.message; }
-  for (const w of ['인허가', '주택건설 인허가', '착공', '주택 착공', '주택건설실적', '시군구별 인허가']) {
-    try { meta.kosisSearch[w] = (await search(w)).slice(0, 20); } catch (e) { meta.kosisSearch[w] = 'error: ' + e.message; }
+  // 공급 선행지표: 인허가 · 착공 · 분양 (월별)
+  meta.supply = {};
+  const supplyList = [];
+  for (const [name, src] of Object.entries(SUPPLY_SOURCES)) {
+    try {
+      let j;
+      try { j = await fetchSeries(src, 48); }
+      catch (e1) { log(name, '기간 분할 실패 → 시·도별로 재시도:', e1.message); j = await fetchByFirstClass(src, 48); }
+      let rows = j.rows;
+      if (src.cumulative || /누계/.test(j.tblNm)) rows = decumulate(rows);
+      const fetchedAt = new Date().toISOString();
+      await writeJSON(path.join(OUT, `supply-${name}.json`), { src: name, label: src.label, tblId: src.tblId, tblNm: j.tblNm, unit: j.unit, rows, fetchedAt });
+      supplyList.push(name);
+      meta.supply[name] = { ok: true, at: fetchedAt, tbl: j.tblNm, rows: rows.length, ...j.info,
+        latest: rows.reduce((m, r) => (r[4] > m ? r[4] : m), ''),
+        c1: distinct(rows, 0), c2: distinct(rows, 1, 25), c3: distinct(rows, 2, 25), items: distinct(rows, 3, 20) };
+      log('공급', name, j.tblNm, rows.length, '행');
+    } catch (e) { errors.push(`공급 ${name}: ${e.message}`); meta.supply[name] = { ok: false, tbl: src.tblId, error: e.message }; }
   }
+  await writeJSON(path.join(OUT, 'supply-index.json'), { list: supplyList, labels: Object.fromEntries(Object.entries(SUPPLY_SOURCES).map(([k, v]) => [k, v.label])) });
 } else {
   log('KOSIS_KEY 없음 — 미분양·인허가 건너뜀');
 }
