@@ -527,10 +527,13 @@ async function renderCy() {
   if (S.sort === 'rate') items.sort((a, b) => rate(b) - rate(a));
   else if (S.sort === 'size') items.sort((a, b) => (b.total || 0) - (a.total || 0));
 
-  const withC = d.items.filter((it) => it.comp && it.comp.supply > 0);
-  const sumSup = withC.reduce((a, it) => a + it.comp.supply, 0), sumR1 = withC.reduce((a, it) => a + it.comp.r1, 0);
-  const shortN = withC.filter((it) => it.comp.shortModels > 0).length;
-  const totalHH = d.items.reduce((a, it) => a + (it.total || 0), 0);
+  // 묶음 요약: 단지 수, 공급 세대, 1순위 평균(합산), 미달 단지 수
+  const stats = (list) => {
+    const withC = list.filter((it) => it.comp && it.comp.supply > 0);
+    const sup = withC.reduce((a, it) => a + it.comp.supply, 0), r1 = withC.reduce((a, it) => a + it.comp.r1, 0);
+    return { n: list.length, hh: list.reduce((a, it) => a + (it.total || 0), 0), rate: sup ? r1 / sup : null, hasC: withC.length > 0, short: withC.filter((it) => it.comp.shortModels > 0).length };
+  };
+  const all3 = stats(d.items);
 
   const card = (it) => {
     const c = it.comp;
@@ -539,24 +542,51 @@ async function renderCy() {
     const rateHtml = c && c.supply ? `<b>${c.avg1.toFixed(c.avg1 >= 100 ? 0 : 1)} : 1</b><span>1순위 평균 · 최고 ${c.max1.toFixed(c.max1 >= 100 ? 0 : 1)}</span>` : `<b class="muted">–</b><span>경쟁률 없음</span>`;
     return `<div class="cy-item"><div class="nm">${nm}${chip}</div><div class="rate">${rateHtml}</div><div class="meta">${!sgg && it.sgg ? esc(it.sgg) + ' · ' : ''}${esc(it.date || '')} 공고 · ${fmt(it.total)}세대${it.kind ? ' · ' + esc(it.kind) : ''}${it.mvn ? ' · 입주 ' + esc(fmtM(String(it.mvn))) : ''}</div></div>`;
   };
+  // 공고 연도별 묶음: 올해 / 작년 / 재작년 / 그 이전
+  const Y = new Date().getFullYear();
+  const yearKey = (it) => { const y = +(String(it.date || '').slice(0, 4)) || 0; return y >= Y - 2 ? String(y) : 'older'; };
+  const groupDefs = [String(Y), String(Y - 1), String(Y - 2), 'older'];
+  const groupName = (k) => k === 'older' ? `${Y - 3}년 이하` : `${k}년`;
+  const byYear = new Map(groupDefs.map((k) => [k, []]));
+  for (const it of items) { const k = yearKey(it); (byYear.get(k) || byYear.get('older')).push(it); }
+  if (!S.cyOpen) S.cyOpen = new Set([groupDefs.find((k) => byYear.get(k).length)]); // 처음엔 가장 최근 연도만 펼침
+  S.cyShowY = S.cyShowY || {};
+  const rateTxt = (r) => r == null ? '–' : r.toFixed(r >= 100 ? 0 : 1) + ' : 1';
+  const groupsHtml = groupDefs.map((k) => {
+    const list = byYear.get(k);
+    if (!list.length) return '';
+    const st = stats(list), show = S.cyShowY[k] || 20, open = S.cyOpen.has(k);
+    return `<details class="cy-year" data-y="${k}"${open ? ' open' : ''}>
+      <summary>
+        <span class="yy">${groupName(k)}</span>
+        <span class="ys"><b>${fmt(st.n)}</b>곳 · <b>${fmt(st.hh)}</b>세대 · 1순위 <b>${rateTxt(st.rate)}</b>${st.short ? ` · <span class="up">미달 ${fmt(st.short)}곳</span>` : ''}</span>
+        <span class="chev" aria-hidden="true"></span>
+      </summary>
+      ${open ? `<div class="cy-list">${list.slice(0, show).map(card).join('')}</div>${list.length > show ? `<button class="ghost more" data-y="${k}">${fmt(list.length - show)}개 더 보기</button>` : ''}` : ''}
+    </details>`;
+  }).join('');
   el.innerHTML = `
     <div class="cy-sum">
-      <div><span class="k">분양 단지</span><b>${fmt(d.count)}곳</b></div>
-      <div><span class="k">공급 세대</span><b>${fmt(totalHH)}</b></div>
-      <div><span class="k">1순위 평균 경쟁률</span><b>${sumSup ? (sumR1 / sumSup).toFixed(1) + ' : 1' : '–'}</b></div>
-      <div><span class="k">미달 발생 단지</span><b>${withC.length ? fmt(shortN) + '곳' : '–'}</b></div>
+      <div><span class="k">분양 단지</span><b>${fmt(all3.n)}곳</b></div>
+      <div><span class="k">공급 세대</span><b>${fmt(all3.hh)}</b></div>
+      <div><span class="k">1순위 평균 경쟁률</span><b>${rateTxt(all3.rate)}</b></div>
+      <div><span class="k">미달 발생 단지</span><b>${all3.hasC ? fmt(all3.short) + '곳' : '–'}</b></div>
     </div>
-    <div class="cy-list">${items.slice(0, S.cyShow).map(card).join('')}</div>
-    ${items.length > S.cyShow ? `<button class="ghost more">${fmt(items.length - S.cyShow)}개 더 보기</button>` : ''}
+    <div class="cy-years">${groupsHtml}</div>
     <p class="note">1순위 평균 = 1순위 접수 합계 ÷ 일반공급 세대(특별공급 제외). 미달 = 1·2순위 접수가 공급 세대보다 적은 주택형.${all.fetchedAt ? ' 자료 수집 ' + esc(all.fetchedAt.slice(0, 10)) + '.' : ''}</p>`;
-  const more = el.querySelector('.more'); if (more) more.onclick = () => { S.cyShow += 20; renderCy(); };
+  el.querySelectorAll('details.cy-year').forEach((det) => det.addEventListener('toggle', () => {
+    const k = det.dataset.y;
+    if (det.open) S.cyOpen.add(k); else S.cyOpen.delete(k);
+    if (det.open && !det.querySelector('.cy-list')) renderCy(); // 펼칠 때 목록을 그림
+  }));
+  el.querySelectorAll('.more').forEach((b) => b.onclick = () => { const k = b.dataset.y; S.cyShowY[k] = (S.cyShowY[k] || 20) + 20; renderCy(); });
 }
 
 /* ---------- 선택 ---------- */
 function select(sido, sgg, { push = true } = {}) {
   S.sel = { sido, sgg };
   S.view = S.view || null;
-  S.cyShow = 20;
+  S.cyShow = 20; S.cyOpen = null; S.cyShowY = {};
   // 주소창에 지역 기록(공유용). 미리보기처럼 막힌 환경에서는 조용히 건너뜀
   if (push && !window.NO_HASH) { try { const h = sido ? '#' + encodeURIComponent(sido) + (sgg ? '/' + encodeURIComponent(sgg) : '') : ''; history.replaceState(null, '', h || location.pathname + location.search); } catch (_) {} }
   // 한 부분이 실패해도 나머지는 그려지도록
