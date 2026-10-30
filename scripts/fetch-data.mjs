@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchSeries, search } from '../lib/kosis.mjs';
+import { fetchSeries, fetchByFirstClass, search, meta as kosisMeta } from '../lib/kosis.mjs';
 import { KOSIS_SOURCES } from '../lib/sources.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
 import { parseRegion } from '../lib/region.mjs';
@@ -45,7 +45,9 @@ const distinct = (rows, i, n = 40) => [...new Set(rows.map((r) => r[i]))].slice(
 
 if (process.env.KOSIS_KEY) {
   try {
-    const j = await fetchSeries(KOSIS_SOURCES.unsold, 120);
+    let j;
+    try { j = await fetchByFirstClass(KOSIS_SOURCES.unsold, 120); }
+    catch (e1) { log('시·도별 요청 실패 → 기간 분할로 재시도:', e1.message); j = await fetchSeries(KOSIS_SOURCES.unsold, 120); }
     // 항목이 여러 개면 '미분양' 합계 항목만 사용
     const items = distinct(j.rows, 3);
     const itm = items.find((t) => /미분양/.test(t)) || items[0];
@@ -76,8 +78,9 @@ if (process.env.KOSIS_KEY) {
 
   // 시·군·구 단위 인허가·착공 통계표 후보 찾기(참고용)
   meta.kosisSearch = {};
-  for (const w of ['주택건설 인허가실적 시군구', '주택 착공실적 시군구', '주택건설실적 시군구별']) {
-    try { meta.kosisSearch[w] = (await search(w)).slice(0, 12); } catch (e) { meta.kosisSearch[w] = 'error: ' + e.message; }
+  try { const pm = await kosisMeta(KOSIS_SOURCES.permit, 'PRD'); meta.permitPrd = pm.slice(0, 5); } catch (e) { meta.permitPrd = 'error: ' + e.message; }
+  for (const w of ['인허가', '주택건설 인허가', '착공', '주택 착공', '주택건설실적', '시군구별 인허가']) {
+    try { meta.kosisSearch[w] = (await search(w)).slice(0, 20); } catch (e) { meta.kosisSearch[w] = 'error: ' + e.message; }
   }
 } else {
   log('KOSIS_KEY 없음 — 미분양·인허가 건너뜀');
