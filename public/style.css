@@ -128,6 +128,19 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 #map rect.callout-hit:hover { fill-opacity: .9; }
 #map text.v.down { fill: var(--down); font-weight: 650; }
 
+.zoom { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; align-items: center; z-index: 3; }
+.zoom button { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.zoom button:hover:not(:disabled) { background: var(--bg); }
+.zoom button:disabled { opacity: .4; cursor: default; }
+.zoom svg { width: 19px; height: 19px; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.zlevel { font-size: 11px; font-weight: 700; color: var(--accent); min-height: 14px; }
+.zhint { position: absolute; top: 10px; left: 10px; font-size: 11px; color: var(--muted); background: color-mix(in srgb, var(--card) 80%, transparent); padding: 3px 7px; border-radius: 6px; pointer-events: none; opacity: .9; }
+.map-wrap.zoomed .zhint { display: none; }
+.map-wrap.zoomed #map { cursor: grab; }
+.map-wrap.zoomed #map:active { cursor: grabbing; }
+.map-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+#map { touch-action: pan-y; }
+.map-wrap.zoomed #map { touch-action: none; }
 .legend { position: absolute; right: 0; bottom: 4px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); background: color-mix(in srgb, var(--card) 85%, transparent); padding: 6px 8px; border-radius: 8px; }
 .legend .bar { display: flex; height: 8px; width: 168px; border-radius: 4px; overflow: hidden; }
 .legend .bar i { flex: 1; }

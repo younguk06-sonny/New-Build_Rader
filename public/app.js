@@ -281,6 +281,8 @@ function renderMap() {
   }
   const { scale, fs } = L, sw = (3 * scale).toFixed(2);
 
+  html += '<g id="lbls">';
+  S.lbl = { items, valueText, basePx };
   // 고정 이름표(전국 지도의 서울·세종·대전)
   if (!sido) {
     for (const it of items) {
@@ -325,8 +327,13 @@ function renderMap() {
       });
     }
   }
+  html += '</g>';
   svg.innerHTML = html;
-  animateView(svg, target);
+  // 확대 상태 유지: 같은 지역에서 색상 기준만 바꿨으면 확대 그대로, 지역이 바뀌면 전체 보기로
+  const zkey = sido || 'nat';
+  S.baseView = target;
+  if (S.zoom && S.zoom.key === zkey && S.zoom.k > 1) { cancelAnimationFrame(S.raf); S.view = null; applyZoomNoLabel(); renderZoomLabels(); }
+  else { S.zoom = { key: zkey, k: 1, cx: target[0] + target[2] / 2, cy: target[1] + target[3] / 2 }; animateView(svg, target); updateZoomUI(); }
   renderLegend(th);
   S.mapItems = new Map(items.map((x) => [x.key, x]));
 }
@@ -356,9 +363,112 @@ function renderLegend(th) {
   }
 }
 
+/* ---------- 지도 확대(돋보기) ---------- */
+const ZMAX = 8;
+function applyZoomNoLabel() {
+  const B = S.baseView, z = S.zoom; if (!B || !z) return;
+  const w = B[2] / z.k, h = B[3] / z.k;
+  z.cx = Math.max(B[0] + w / 2, Math.min(B[0] + B[2] - w / 2, z.cx));
+  z.cy = Math.max(B[1] + h / 2, Math.min(B[1] + B[3] - h / 2, z.cy));
+  const v = [z.cx - w / 2, z.cy - h / 2, w, h];
+  $('#map').setAttribute('viewBox', v.join(' ')); S.view = v; updateZoomUI();
+}
+function applyZoom() {
+  const B = S.baseView, z = S.zoom; if (!B || !z) return;
+  const w = B[2] / z.k, h = B[3] / z.k;
+  // 지도 밖으로 너무 나가지 않게
+  z.cx = Math.max(B[0] + w / 2, Math.min(B[0] + B[2] - w / 2, z.cx));
+  z.cy = Math.max(B[1] + h / 2, Math.min(B[1] + B[3] - h / 2, z.cy));
+  const v = [z.cx - w / 2, z.cy - h / 2, w, h];
+  $('#map').setAttribute('viewBox', v.join(' ')); S.view = v;
+  updateZoomUI();
+  cancelAnimationFrame(S.zraf); S.zraf = requestAnimationFrame(renderZoomLabels);
+}
+// 확대 중 이름표: 보이는 배율에 맞춘 글자 크기로, 들어가는 지역은 모두 안쪽에 표시
+function renderZoomLabels() {
+  const g = document.getElementById('lbls'); if (!g || !S.lbl) return;
+  if ((S.zoom?.k || 1) <= 1) { renderMap(); return; } // 원래 배치(옆 이름표 포함)로 복귀
+  const { items, valueText, basePx } = S.lbl, v = S.view;
+  const sc = toMap(0, 0)[2], fs = basePx * sc, sw = (3 * sc).toFixed(3);
+  const placed = []; let html = '';
+  const vis = items.filter((it) => it.f.pole && it.f.pole[0] > v[0] && it.f.pole[0] < v[0] + v[2] && it.f.pole[1] > v[1] && it.f.pole[1] < v[1] + v[3]).sort((a, b) => b.f.rad - a.f.rad);
+  for (const it of vis) {
+    const vt = valueText(it), [x, y] = it.f.pole;
+    const hw = Math.max(it.label.length * fs * 0.5, vt.t.length * fs * 0.3), hh = fs * 1.1;
+    if (!(it.f.rad >= hh * 0.7 && it.f.rad >= hw * 0.55)) continue;
+    if (placed.some((q) => Math.abs(q[0] - x) < q[2] + hw && Math.abs(q[1] - y) < q[3] + hh)) continue;
+    placed.push([x, y, hw, hh]);
+    html += `<text x="${x}" y="${y - fs * 0.55}" font-size="${fs}" style="stroke-width:${sw}px">${esc(it.label)}</text><text class="v${vt.c}" x="${x}" y="${y + fs * 0.6}" font-size="${fs * 0.9}" style="stroke-width:${sw}px">${vt.t}</text>`;
+  }
+  g.innerHTML = html;
+}
+function updateZoomUI() {
+  const k = S.zoom?.k || 1;
+  $('#zIn').disabled = k >= ZMAX; $('#zOut').disabled = k <= 1; $('#zReset').hidden = k <= 1;
+  $('#zLevel').textContent = k > 1 ? `×${k.toFixed(k < 2 ? 1 : 0)}` : '';
+  $('#mapWrap').classList.toggle('zoomed', k > 1);
+}
+// 화면 좌표(px) → 지도 좌표
+function toMap(clientX, clientY) {
+  const svg = $('#map'), r = svg.getBoundingClientRect(), v = S.view || S.baseView;
+  const sc = Math.max(v[2] / r.width, v[3] / r.height); // preserveAspectRatio meet
+  const ox = (r.width - v[2] / sc) / 2, oy = (r.height - v[3] / sc) / 2;
+  return [v[0] + (clientX - r.left - ox) * sc, v[1] + (clientY - r.top - oy) * sc, sc];
+}
+function zoomAt(factor, clientX, clientY) {
+  const z = S.zoom; if (!z) return;
+  const nk = Math.max(1, Math.min(ZMAX, z.k * factor)); if (nk === z.k) return;
+  if (clientX != null) {
+    // 마우스가 가리키는 지점이 그대로 있도록 중심 이동
+    const [mx, my] = toMap(clientX, clientY);
+    z.cx = mx + (z.cx - mx) * z.k / nk; z.cy = my + (z.cy - my) * z.k / nk;
+  }
+  z.k = nk; cancelAnimationFrame(S.raf); applyZoom();
+}
+function bindZoom() {
+  const svg = $('#map'), wrap = $('#mapWrap');
+  $('#zIn').onclick = () => zoomAt(1.6);
+  $('#zOut').onclick = () => zoomAt(1 / 1.6);
+  $('#zReset').onclick = () => { S.zoom.k = 1; applyZoom(); };
+  // 휠: 지도 위에서만 확대/축소 (페이지 스크롤과 구분하려고 확대 중이거나 Ctrl/⌘·트랙패드 확대일 때 + 일반 휠 모두 허용)
+  svg.addEventListener('wheel', (e) => {
+    if (e.deltaY > 0 && (S.zoom?.k || 1) <= 1) return; // 전체 보기에서 아래로 굴리면 페이지 스크롤
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX, e.clientY);
+  }, { passive: false });
+  // 끌어서 이동 + 두 손가락 확대
+  const pts = new Map(); let drag = null, pinch = null;
+  S.dragMoved = false;
+  svg.addEventListener('pointerdown', (e) => {
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pts.size === 1) { drag = { x: e.clientX, y: e.clientY, cx: S.zoom.cx, cy: S.zoom.cy }; S.dragMoved = false; }
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), k: S.zoom.k }; drag = null; }
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch && pts.size === 2) {
+      const [a, b] = [...pts.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const target = Math.max(1, Math.min(ZMAX, pinch.k * d / pinch.d));
+      zoomAt(target / S.zoom.k, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); S.dragMoved = true; e.preventDefault(); return;
+    }
+    if (drag && S.zoom.k > 1) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) { S.dragMoved = true; if (!svg.hasPointerCapture(e.pointerId)) svg.setPointerCapture(e.pointerId); }
+      if (S.dragMoved) { const sc = toMap(0, 0)[2]; S.zoom.cx = drag.cx - dx * sc; S.zoom.cy = drag.cy - dy * sc; applyZoom(); $('#tip').hidden = true; }
+    }
+  });
+  const end = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) drag = null; };
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end); svg.addEventListener('pointerleave', end);
+  // 키보드: + / - / 0
+  wrap.addEventListener('keydown', (e) => { if (e.key === '+' || e.key === '=') zoomAt(1.6); else if (e.key === '-') zoomAt(1 / 1.6); else if (e.key === '0') { S.zoom.k = 1; applyZoom(); } });
+}
+
 function bindMap() {
   const svg = $('#map'), tip = $('#tip'), wrap = $('#mapWrap');
+  bindZoom();
   svg.addEventListener('click', (e) => {
+    if (S.dragMoved) { S.dragMoved = false; return; } // 끌어서 이동한 경우는 선택하지 않음
     const p = e.target.closest('path, rect.callout-hit');
     if (!p) return;
     if (p.dataset.sido) return select(p.dataset.sido, null);

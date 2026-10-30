@@ -42,8 +42,15 @@
         <button data-metric="pop">인구</button>
       </div>
     </div>
-    <div id="mapWrap" class="map-wrap">
+    <div id="mapWrap" class="map-wrap" tabindex="0" aria-label="지도 (+ / − 키로 확대·축소)">
       <svg id="map" role="img" aria-label="대한민국 지도"></svg>
+      <div class="zoom" role="group" aria-label="지도 확대">
+        <button id="zIn" title="확대" aria-label="확대"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M10.5 7.5v6M7.5 10.5h6"/></svg></button>
+        <button id="zOut" title="축소" aria-label="축소"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M7.5 10.5h6"/></svg></button>
+        <button id="zReset" title="전체 보기" aria-label="전체 보기" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <span id="zLevel" class="zlevel"></span>
+      </div>
+      <div class="zhint">휠·두 손가락으로 확대, 끌어서 이동</div>
       <div id="legend" class="legend"></div>
       <div id="tip" class="tip" hidden></div>
     </div>
