@@ -333,7 +333,7 @@ function renderCrumb() {
 /* ---------- 차트 ---------- */
 function niceMax(v) { if (v <= 0) return 10; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
 
-function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호', extremes = false } = {}) {
+function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호', extremes = false, xTick = null } = {}) {
   const W = Math.max(280, el.clientWidth || 600), H = height;
   const m = { l: 44, r: 10, t: extremes ? 30 : 12, b: 24 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
@@ -345,8 +345,13 @@ function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호'
   for (let k = 0; k <= 4; k++) { const v = max * k / 4, yy = y(v); g += `<line x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}"/>`; }
   g += '</g><g class="axis">';
   for (let k = 0; k <= 4; k++) { const v = max * k / 4; g += `<text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end">${v >= 10000 ? (v / 10000).toFixed(v % 10000 ? 1 : 0) + '만' : fmt(v)}</text>`; }
-  const step = Math.ceil(n / (W < 480 ? 4 : 7));
-  for (let i = 0; i < n; i += step) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${months[i].slice(2, 4)}.${months[i].slice(4, 6)}</text>`;
+  if (xTick) {
+    // 정해진 달에만 눈금(예: 6개월·1년 단위)
+    for (let i = 0; i < n; i++) { const t = xTick(months[i]); if (t) g += `<line class="xt" x1="${x(i)}" x2="${x(i)}" y1="${m.t + ih}" y2="${m.t + ih + 4}"/><text x="${x(i)}" y="${H - 6}" text-anchor="middle">${t}</text>`; }
+  } else {
+    const step = Math.ceil(n / (W < 480 ? 4 : 7));
+    for (let i = 0; i < n; i += step) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${months[i].slice(2, 4)}.${months[i].slice(4, 6)}</text>`;
+  }
   g += '</g>';
   let body = '';
   if (type === 'line') {
@@ -391,7 +396,12 @@ function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호'
 function renderTrend() {
   const s = currentSeries(); if (!s) return;
   const n = Math.min(S.range, s.length);
-  drawChart($('#trend'), S.months.slice(-n), s.slice(-n), { height: 230, extremes: true });
+  // x축 눈금: 1년은 2개월, 3년은 6개월(1월·7월), 5·10년은 1년(1월) 단위
+  const narrow = ($('#trend').clientWidth || 600) < 480;
+  const xTick = S.range <= 12 ? (m) => (+m.slice(4) % 2 === 1 ? `${m.slice(2, 4)}.${m.slice(4)}` : null)
+    : S.range <= 36 ? (m) => (m.slice(4) === '01' || m.slice(4) === '07' ? `${m.slice(2, 4)}.${m.slice(4)}` : null)
+    : (m) => (m.slice(4) === '01' && (S.range <= 60 || !narrow || +m.slice(0, 4) % 2 === 0) ? `${m.slice(0, 4)}` : null);
+  drawChart($('#trend'), S.months.slice(-n), s.slice(-n), { height: 230, extremes: true, xTick });
 }
 
 /* ---------- 향후 공급 ---------- */

@@ -149,6 +149,7 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 .chart { position: relative; width: 100%; }
 .chart svg { display: block; width: 100%; overflow: visible; }
 .chart .grid line { stroke: var(--line-2); }
+.chart .axis line.xt { stroke: var(--muted); stroke-opacity: .6; }
 .chart .axis text { fill: var(--muted); font-size: 11px; }
 .chart .ln { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linejoin: round; }
 .chart .ar { fill: var(--accent); opacity: .09; }
