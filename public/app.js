@@ -333,9 +333,9 @@ function renderCrumb() {
 /* ---------- 차트 ---------- */
 function niceMax(v) { if (v <= 0) return 10; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
 
-function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호' } = {}) {
+function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호', extremes = false } = {}) {
   const W = Math.max(280, el.clientWidth || 600), H = height;
-  const m = { l: 44, r: 10, t: 12, b: 24 };
+  const m = { l: 44, r: 10, t: extremes ? 30 : 12, b: 24 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
   const n = vals.length;
   const max = niceMax(Math.max(1, ...vals.filter((v) => v != null)));
@@ -355,6 +355,20 @@ function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호'
     if (first != null) { a = d.replace(/^M/, 'M') + `L${x(lastX).toFixed(1)},${y(0)}L${x(first).toFixed(1)},${y(0)}Z`; }
     body = `<path class="ar" d="${a}"/><path class="ln" d="${d}"/>`;
     const li = vals.length - 1; if (vals[li] != null) body += `<circle class="dot" cx="${x(li)}" cy="${y(vals[li])}" r="4"/>`;
+    if (extremes) {
+      // 보이는 기간 안의 최고·최저 지점에 값과 시점 표시
+      let hi = -1, lo = -1;
+      vals.forEach((v, i) => { if (v == null) return; if (hi < 0 || v > vals[hi]) hi = i; if (lo < 0 || v < vals[lo]) lo = i; });
+      const mark = (i, kind) => {
+        const cx = x(i), cy = y(vals[i]);
+        const anchor = cx < m.l + 50 ? 'start' : cx > W - m.r - 50 ? 'end' : 'middle';
+        const below = kind === 'lo' && cy + 30 < m.t + ih;
+        const ty = kind === 'hi' ? cy - 10 : below ? cy + 20 : cy - 10;
+        return `<circle class="ex-dot ${kind}" cx="${cx}" cy="${cy}" r="4.5"/><text class="ex ${kind}" x="${cx}" y="${ty}" text-anchor="${anchor}">${kind === 'hi' ? '최고' : '최저'} ${fmt(vals[i])}<tspan class="exm"> (${months[i].slice(2, 4)}.${months[i].slice(4, 6)})</tspan></text>`;
+      };
+      if (hi >= 0) body += mark(hi, 'hi');
+      if (lo >= 0 && lo !== hi) body += mark(lo, 'lo');
+    }
   } else {
     const bw = Math.max(1, iw / n * 0.7);
     vals.forEach((v, i) => { if (v == null || v < 0) return; body += `<rect class="bar${i === n - 1 ? ' hl' : ''}" x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(0) - y(v)).toFixed(1)}" rx="1.5"/>`; });
@@ -377,7 +391,7 @@ function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호'
 function renderTrend() {
   const s = currentSeries(); if (!s) return;
   const n = Math.min(S.range, s.length);
-  drawChart($('#trend'), S.months.slice(-n), s.slice(-n), { height: 210 });
+  drawChart($('#trend'), S.months.slice(-n), s.slice(-n), { height: 230, extremes: true });
 }
 
 /* ---------- 향후 공급 ---------- */

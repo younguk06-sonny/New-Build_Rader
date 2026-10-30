@@ -156,6 +156,13 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 .chart .bar.hl { fill: var(--s5); }
 .chart .cross { stroke: var(--ink-2); stroke-dasharray: 2 3; }
 .chart .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+.chart .ex { font-size: 11.5px; font-weight: 700; paint-order: stroke; stroke: var(--card); stroke-width: 3px; stroke-linejoin: round; }
+.chart .ex.hi { fill: var(--up); }
+.chart .ex.lo { fill: var(--down); }
+.chart .ex .exm { font-weight: 500; fill: var(--muted); }
+.chart .ex-dot { stroke: var(--card); stroke-width: 2; }
+.chart .ex-dot.hi { fill: var(--up); }
+.chart .ex-dot.lo { fill: var(--down); }
 .chart .ctip { position: absolute; top: 0; pointer-events: none; background: var(--ink); color: var(--card); font-size: 12px; padding: 5px 8px; border-radius: 7px; white-space: nowrap; transform: translateX(-50%); }
 
 .supply-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
