@@ -111,6 +111,20 @@ if (process.env.KOSIS_KEY) {
   }
   await writeJSON(path.join(OUT, 'supply-index.json'), { list: supplyList, labels: Object.fromEntries(Object.entries(SUPPLY_SOURCES).map(([k, v]) => [k, v.label])) });
 
+  // [탐색] 지역 여건 통계표 후보 찾기 — 구조 확인 후 정식 수집으로 바꿀 예정
+  meta.discover = { search: {}, probe: {} };
+  for (const w of ['아파트 매매 거래현황', '주택 매매거래현황', '부동산 거래현황 시군구', '아파트 거래현황', '주민등록세대수', '연령별 주민등록인구']) {
+    try { meta.discover.search[w] = (await search(w)).slice(0, 15); } catch (e) { meta.discover.search[w] = 'error: ' + e.message; }
+  }
+  for (const [org, tbl] of [['101', 'DT_1B040B3'], ['101', 'DT_1B04005N'], ['101', 'DT_1B040A3']]) {
+    try {
+      const it = await kosisMeta({ orgId: org, tblId: tbl }, 'ITM');
+      const objs = {};
+      for (const r of it) { const k = r.OBJ_ID + ' ' + (r.OBJ_NM || ''); (objs[k] ||= []).push(r.ITM_NM); }
+      meta.discover.probe[tbl] = Object.fromEntries(Object.entries(objs).map(([k, v]) => [k, `${v.length}개: ${v.slice(0, 12).join(', ')}`]));
+    } catch (e) { meta.discover.probe[tbl] = 'error: ' + e.message; }
+  }
+
   // 인구: 최신 1개월, 시·도와 시·군·구별 총인구
   try {
     const src = POPULATION_SOURCE;
