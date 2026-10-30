@@ -441,7 +441,7 @@ async function renderCy() {
   if (!all) {
     el.innerHTML = '<div class="skel" style="width:60%"></div><div class="skel"></div><div class="skel"></div><div class="skel" style="width:80%"></div>';
     try {
-      all = await getJSON(`data/cheongyak/${encodeURIComponent(sido)}.json`); // 시·도별 파일(매일 갱신)
+      all = (window.PRELOAD_CY && window.PRELOAD_CY[sido]) || await getJSON(`data/cheongyak/${encodeURIComponent(sido)}.json`); // 시·도별 파일(매일 갱신)
       S.cy.set(sido, all);
     } catch (e) {
       if (S.sel.sido !== sido || S.sel.sgg !== sgg) return;

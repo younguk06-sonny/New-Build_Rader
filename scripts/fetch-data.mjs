@@ -8,7 +8,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import kosisHandler from '../lib/kosis.mjs';
+import { fetchSeries, search } from '../lib/kosis.mjs';
+import { KOSIS_SOURCES } from '../lib/sources.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
 import { parseRegion } from '../lib/region.mjs';
 import { getJSON, pool } from '../lib/http.mjs';
@@ -39,37 +40,45 @@ meta.runAt = new Date().toISOString();
 const errors = [];
 
 /* ---------- KOSIS: 미분양 · 인허가 ---------- */
-async function kosis(src, n) {
-  const res = await kosisHandler(new Request(`http://local/api/kosis?src=${src}&n=${n}`));
-  const j = await res.json();
-  if (!res.ok) throw new Error(`${j.error}: ${j.message}`);
-  return j;
-}
+const TOTALS = new Set(['', '계', '합계', '총계', '전체', '소계']);
+const distinct = (rows, i, n = 40) => [...new Set(rows.map((r) => r[i]))].slice(0, n);
 
 if (process.env.KOSIS_KEY) {
   try {
-    const j = await kosis('unsold', 120);
-    // 화면이 바로 쓰는 표 형식 {months, rows:[[시도, 시군구, 값...]]}
-    const months = [...new Set(j.rows.map((r) => r[4]))].filter(Boolean).sort();
+    const j = await fetchSeries(KOSIS_SOURCES.unsold, 120);
+    // 항목이 여러 개면 '미분양' 합계 항목만 사용
+    const items = distinct(j.rows, 3);
+    const itm = items.find((t) => /미분양/.test(t)) || items[0];
+    const rows = j.rows.filter((r) => r[3] === itm && TOTALS.has(r[2]));
+    const months = [...new Set(rows.map((r) => r[4]))].filter(Boolean).sort();
     const mi = new Map(months.map((m, i) => [m, i]));
     const map = new Map();
-    for (const [a, b, , , p, v] of j.rows) {
+    for (const [a, b, , , p, v] of rows) {
       const k = a + '|' + b;
       if (!map.has(k)) map.set(k, [a, b, ...new Array(months.length).fill(null)]);
       if (mi.has(p)) map.get(k)[2 + mi.get(p)] = v;
     }
-    if (map.size < 50) throw new Error(`미분양 행이 너무 적음(${map.size})`);
-    await writeJSON(path.join(OUT, 'unsold.json'), { source: `KOSIS ${j.tblId} ${j.tblNm}`, months, rows: [...map.values()], fetchedAt: j.fetchedAt });
-    meta.unsold = { ok: true, at: j.fetchedAt, last: months.at(-1), rows: map.size };
+    if (map.size < 50) throw new Error(`미분양 행이 너무 적음(${map.size}) · 항목 ${items.join('/')}`);
+    const fetchedAt = new Date().toISOString();
+    await writeJSON(path.join(OUT, 'unsold.json'), { source: `KOSIS ${KOSIS_SOURCES.unsold.tblId} ${j.tblNm}`, months, rows: [...map.values()], fetchedAt });
+    meta.unsold = { ok: true, at: fetchedAt, last: months.at(-1), rows: map.size, items, ...j.info };
     log('미분양', months.at(-1), map.size, '행');
-  } catch (e) { errors.push('미분양: ' + e.message); meta.unsold = { ...(meta.unsold || {}), ok: false, error: e.message }; }
+  } catch (e) { errors.push('미분양: ' + e.message); meta.unsold = { ok: false, error: e.message }; }
 
   try {
-    const j = await kosis('permit', 48);
-    await writeJSON(path.join(OUT, 'permit.json'), j);
-    meta.permit = { ok: true, at: j.fetchedAt, rows: j.rows.length, tbl: j.tblNm };
-    log('인허가', j.rows.length, '행');
-  } catch (e) { errors.push('인허가: ' + e.message); meta.permit = { ...(meta.permit || {}), ok: false, error: e.message }; }
+    const j = await fetchSeries(KOSIS_SOURCES.permit, 48);
+    const fetchedAt = new Date().toISOString();
+    await writeJSON(path.join(OUT, 'permit.json'), { src: 'permit', label: KOSIS_SOURCES.permit.label, tblId: KOSIS_SOURCES.permit.tblId, tblNm: j.tblNm, unit: j.unit, prdSe: j.info.prdSe, rows: j.rows, fetchedAt });
+    // 표 구조 확인용 요약(분류 이름 일부)
+    meta.permit = { ok: true, at: fetchedAt, tbl: j.tblNm, rows: j.rows.length, ...j.info, c1: distinct(j.rows, 0), c2: distinct(j.rows, 1, 20), c3: distinct(j.rows, 2, 20), items: distinct(j.rows, 3, 20) };
+    log('인허가', j.tblNm, j.rows.length, '행', j.info);
+  } catch (e) { errors.push('인허가: ' + e.message); meta.permit = { ok: false, error: e.message }; }
+
+  // 시·군·구 단위 인허가·착공 통계표 후보 찾기(참고용)
+  meta.kosisSearch = {};
+  for (const w of ['주택건설 인허가실적 시군구', '주택 착공실적 시군구', '주택건설실적 시군구별']) {
+    try { meta.kosisSearch[w] = (await search(w)).slice(0, 12); } catch (e) { meta.kosisSearch[w] = 'error: ' + e.message; }
+  }
 } else {
   log('KOSIS_KEY 없음 — 미분양·인허가 건너뜀');
 }
