@@ -791,7 +791,6 @@ async function renderFlow() {
   }
   const cur = rows[0];
   const tot = rows.reduce((a, r) => { if (r.o) { a.n += r.o.n; a.units += r.o.units; a.sn += r.o.sn; a.su += r.o.su; } return a; }, { n: 0, units: 0, sn: 0, su: 0 });
-  const maxU = Math.max(1, ...rows.map((r) => r.o?.units || 0));
   const place = sgg || sido || '전국';
   const signed = (v) => v == null ? '–' : `<span class="${v > 0 ? 'up' : v < 0 ? 'down' : 'flat'}">${v > 0 ? '+' : v < 0 ? '−' : '±'}${fmt(Math.abs(v))}</span>`;
   const ch = cur.o;
@@ -802,14 +801,14 @@ async function renderFlow() {
       <div><span class="k">${fmtM(cur.m)} 말 미분양</span><b>${fmt(cur.u)}호</b><span class="s">전월 대비 ${signed(cur.du)}</span></div>
     </div>
     <div class="tr-wrap flow-wrap"><table class="tr-table flow-table">
-      <colgroup><col style="width:9%"><col style="width:12%"><col style="width:25%"><col style="width:12%"><col style="width:12%"><col style="width:16%"><col style="width:14%"></colgroup>
+      <colgroup><col style="width:10%"><col style="width:13%"><col style="width:15%"><col style="width:13%"><col style="width:14%"><col style="width:17%"><col style="width:18%"></colgroup>
       <thead><tr><th>월</th><th class="r">분양 단지</th><th class="r">분양 세대</th><th class="r">미달 단지</th><th class="r">미달 세대</th><th class="r">월말 미분양</th><th class="r">증감</th></tr></thead>
       <tbody>${rows.map((r) => `<tr class="${r === cur ? 'cur' : ''}"><td>${fmtM(r.m).slice(2)}</td>
-        ${r.o ? `<td class="r">${fmt(r.o.n)}</td><td><span class="fb"><i style="width:${(r.o.units / maxU * 100).toFixed(1)}%"></i><em style="width:${(r.o.su / maxU * 100).toFixed(1)}%"></em></span><span class="fv">${fmt(r.o.units)}</span></td><td class="r">${r.o.sn ? `<b class="up">${fmt(r.o.sn)}</b>` : '0'}</td><td class="r">${r.o.su ? `<b class="up">${fmt(r.o.su)}</b>` : '0'}</td>` : '<td class="r muted" colspan="4">청약 자료 범위 밖</td>'}
+        ${r.o ? `<td class="r">${fmt(r.o.n)}</td><td class="r">${fmt(r.o.units)}</td><td class="r">${r.o.sn ? `<b class="up">${fmt(r.o.sn)}</b>` : '0'}</td><td class="r">${r.o.su ? `<b class="up">${fmt(r.o.su)}</b>` : '0'}</td>` : '<td class="r muted" colspan="4">청약 자료 범위 밖</td>'}
         <td class="r">${fmt(r.u)}</td><td class="r">${signed(r.du)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td>합계</td><td class="r">${fmt(tot.n)}</td><td><span class="fv">${fmt(tot.units)}</span></td><td class="r">${fmt(tot.sn)}</td><td class="r">${fmt(tot.su)}</td><td class="r" colspan="2">${rows.length > 1 && rows.at(-1).u != null && cur.u != null ? `12개월 ${signed(cur.u - (ser[L - 13] ?? rows.at(-1).u))}` : ''}</td></tr></tfoot>
+      <tfoot><tr><td>합계</td><td class="r">${fmt(tot.n)}</td><td class="r">${fmt(tot.units)}</td><td class="r">${fmt(tot.sn)}</td><td class="r">${fmt(tot.su)}</td><td class="r" colspan="2">${rows.length > 1 && rows.at(-1).u != null && cur.u != null ? `12개월 ${signed(cur.u - (ser[L - 13] ?? rows.at(-1).u))}` : ''}</td></tr></tfoot>
     </table></div>
-    <p class="note">${esc(place)} 기준. 분양은 청약홈 입주자모집공고(공고일 기준, 임대 제외), 청약 미달은 일반공급 1·2순위 접수가 공급 세대보다 적은 만큼입니다. 미분양은 국토교통부 지역 합계로, 단지별로는 공표되지 않아 개별 단지와 직접 연결되지는 않습니다. 막대: 파랑=분양 세대, 빨강=그중 미달 세대.</p>`;
+    <p class="note">${esc(place)} 기준. 분양은 청약홈 입주자모집공고(공고일 기준, 임대 제외), 청약 미달은 일반공급 1·2순위 접수가 공급 세대보다 적은 만큼입니다. 미분양은 국토교통부 지역 합계로, 단지별로는 공표되지 않아 개별 단지와 직접 연결되지는 않습니다.</p>`;
 }
 
 /* ---------- 지역 여건: 거래량 · 인구·세대 · 연령 ---------- */
