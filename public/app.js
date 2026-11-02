@@ -893,7 +893,7 @@ function renderTrade() {
   if (!T || !T.complete) { el.innerHTML = `<div class="empty">${window.PREVIEW ? '미리보기에는 실거래가 자료가 들어 있지 않습니다.' : '실거래가 자료를 아직 받지 못했습니다. 공공데이터포털에서 <b>국토교통부_아파트 매매 실거래가 자료</b>를 활용신청하면 다음 자동 수집부터 채워집니다.'}</div>`; $('#trMeta').textContent = ''; return; }
   const { sido, sgg } = S.sel;
   const place = sgg || sido || '전국';
-  $('#trMeta').textContent = `수집 ${String(T.fetchedAt || '').slice(0, 10)}`;
+  $('#trMeta').textContent = `수집 ${(T.fetchedAt ? new Date(Date.parse(T.fetchedAt) + 9 * 3600e3).toISOString().slice(0, 10) : '')}`;
   const M = T.months;
   const tick6 = (m) => (m.slice(4) === '01' || m.slice(4) === '07' ? `${m.slice(2, 4)}.${m.slice(4)}` : null);
   const note = '<p class="note">국토교통부 실거래가(공공데이터포털 API) 기준입니다. <b>대장 아파트</b>는 최근 12개월 거래가 10건 이상인 단지 중 평당가(중위값)가 가장 높은 단지로 자동 선정합니다(10건 이상 단지가 없으면 5건·2건 기준). 계약일 기준이며 신고 기한(30일) 때문에 최근 1~2개월은 계속 늘어납니다. 해제된 거래는 제외했습니다.</p>';
