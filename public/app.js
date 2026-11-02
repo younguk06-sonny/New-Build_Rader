@@ -891,38 +891,60 @@ function tradeOf() {
 function renderTrade() {
   const el = $('#trBody'), T = S.trade;
   if (!T || !T.complete) { el.innerHTML = `<div class="empty">${window.PREVIEW ? '미리보기에는 실거래가 자료가 들어 있지 않습니다.' : '실거래가 자료를 아직 받지 못했습니다. 공공데이터포털에서 <b>국토교통부_아파트 매매 실거래가 자료</b>를 활용신청하면 다음 자동 수집부터 채워집니다.'}</div>`; $('#trMeta').textContent = ''; return; }
-  const place = S.sel.sgg || S.sel.sido || '전국';
-  const t = tradeOf(); const v = t?.v;
-  $('#trMeta').textContent = `${T.complete < 100 ? `3년치 채우는 중 ${T.complete}% · ` : ''}수집 ${String(T.fetchedAt || '').slice(0, 10)}`;
-  if (!v) { el.innerHTML = `<div class="empty">${esc(place)}의 실거래 자료가 아직 없습니다.</div>`; return; }
-  const M = T.months, last3 = (arr) => { const xs = arr.slice(-3).filter((x) => x != null); return xs.length ? xs : null; };
-  const avg = (xs) => xs ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
-  const sum = (arr, a, b) => { let t = null; for (let i = a; i < b; i++) if (i >= 0 && arr[i] != null) t = (t || 0) + arr[i]; return t; };
-  const n12 = sum(v.n, M.length - 12, M.length), n12p = sum(v.n, M.length - 24, M.length - 12), cn = chg(n12, n12p);
-  const py3 = avg(last3(v.py)), py3p = avg(v.py.slice(-15, -12).filter((x) => x != null)), cp = chg(py3, py3p);
-  const amt3 = avg(last3(v.amt));
-  el.innerHTML = `
-    <div class="rs-kpis">
-      <div><span class="k">중위 거래가 (최근 3개월)</span><b>${fmtWon(amt3 && Math.round(amt3))}</b></div>
-      <div><span class="k">평당 가격 (3.3㎡)</span><b>${py3 ? fmt(py3) + '만' : '–'}</b><span class="${cp.c}">1년 전 대비 ${py3 && py3p ? ((py3 >= py3p ? '+' : '−') + Math.abs((py3 / py3p - 1) * 100).toFixed(1) + '%') : '–'}</span></div>
-      <div><span class="k">거래 건수 (최근 12개월)</span><b>${fmt(n12)}건</b><span class="${cn.c}">${cn.t}</span></div>
-    </div>
-    <div class="mini-h">평당 가격 추이 <span class="muted">(중위값, 만원/3.3㎡)</span></div>
-    <div class="chart" id="trPy"></div>
-    <div class="mini-h" style="margin-top:6px">월별 거래 건수</div>
-    <div class="chart" id="trN"></div>
-    <div id="trList"></div>
-    <p class="note">국토교통부 실거래가 공개시스템과 같은 자료(공공데이터포털 API)입니다. 계약일 기준이며 신고 기한(30일) 때문에 최근 1~2개월은 계속 늘어납니다. 해제된 거래는 제외했습니다.</p>`;
-  const tick6 = (m) => (m.slice(4) === '01' || m.slice(4) === '07' ? `${m.slice(2, 4)}.${m.slice(4)}` : null);
-  drawChart($('#trPy'), M, v.py, { height: 160, unit: '만', extremes: true, xTick: tick6, fit: true });
-  drawChart($('#trN'), M, v.n, { type: 'bar', height: 110, unit: '건', xTick: tick6 });
-  // 최근 거래 목록 (시·군·구를 골랐을 때)
   const { sido, sgg } = S.sel;
-  const list = sgg ? T.recent?.[sido]?.[sgg] : null;
-  $('#trList').innerHTML = list && list.length ? `<div class="sub-h" style="margin-top:14px">최근 실거래 <span class="muted">${esc(sgg)} · ${list.length}건</span></div>
-    <div class="tr-wrap"><table class="tr-table"><thead><tr><th>계약일</th><th>단지</th><th>전용</th><th>층</th><th class="r">거래가</th></tr></thead><tbody>
-    ${list.map((d) => `<tr><td>${d[0].slice(2, 4)}.${d[0].slice(4, 6)}.${d[0].slice(6, 8)}</td><td><b>${esc(d[1])}</b><span class="muted"> ${esc(d[2])}</span></td><td>${d[3]}㎡</td><td>${d[4] ?? ''}</td><td class="r"><b>${fmtWon(d[5])}</b></td></tr>`).join('')}
-    </tbody></table></div>` : (sgg ? '' : '<p class="note">시·군·구를 고르면 최근 실거래 목록이 나옵니다.</p>');
+  const place = sgg || sido || '전국';
+  $('#trMeta').textContent = `수집 ${String(T.fetchedAt || '').slice(0, 10)}`;
+  const M = T.months;
+  const tick6 = (m) => (m.slice(4) === '01' || m.slice(4) === '07' ? `${m.slice(2, 4)}.${m.slice(4)}` : null);
+  const note = '<p class="note">국토교통부 실거래가(공공데이터포털 API) 기준입니다. <b>대장 아파트</b>는 최근 12개월 거래가 10건 이상인 단지 중 평당가(중위값)가 가장 높은 단지로 자동 선정합니다(10건 이상 단지가 없으면 5건·2건 기준). 계약일 기준이며 신고 기한(30일) 때문에 최근 1~2개월은 계속 늘어납니다. 해제된 거래는 제외했습니다.</p>';
+  const pyTxt = (v) => v ? fmt(v) + '만' : '–';
+
+  // 시·도 또는 전국: 시·군·구별 대장 아파트 목록
+  if (!sgg) {
+    const rows = [];
+    for (const [sd, m] of Object.entries(T.leader || {})) {
+      if (sido && sd !== sido) continue;
+      for (const [g, L] of Object.entries(m)) rows.push([sd, g, L]);
+    }
+    rows.sort((a, b) => b[2].py12 - a[2].py12);
+    const shown = sido ? rows : rows.slice(0, 20);
+    if (!rows.length) { el.innerHTML = `<div class="empty">대장 아파트 자료를 모으는 중입니다. 1~2일 안에 채워집니다.</div>${note}`; return; }
+    el.innerHTML = `<div class="sub-h">${sido ? esc(sido) + ' 시·군·구별 대장 아파트' : '전국 대장 아파트 평당가 상위 20'} <span class="muted">최근 12개월 · 행을 누르면 해당 지역으로 이동</span></div>
+      <div class="tr-wrap"><table class="tr-table ld-table"><thead><tr><th>지역</th><th>대장 아파트</th><th class="r">평당가</th><th class="r">거래</th></tr></thead><tbody>
+      ${shown.map(([sd, g, L]) => `<tr class="go" data-sd="${esc(sd)}" data-g="${esc(g)}"><td>${sido ? '' : esc(sd) + ' '}${esc(g)}</td><td><b>${esc(L.apt)}</b><span class="muted"> ${esc(L.dong)}${L.by ? ' · ' + L.by + '년' : ''}</span></td><td class="r"><b>${pyTxt(L.py12)}</b></td><td class="r">${fmt(L.n12)}건</td></tr>`).join('')}
+      </tbody></table></div>${note}`;
+    el.querySelectorAll('tr.go').forEach((tr) => tr.onclick = () => select(tr.dataset.sd, tr.dataset.g));
+    return;
+  }
+
+  const L = T.leader?.[sido]?.[sgg];
+  if (!L) { el.innerHTML = `<div class="empty">${esc(place)}의 대장 아파트 자료가 아직 없습니다.${T.leader && Object.keys(T.leader).length ? '' : ' 1~2일 안에 채워집니다.'}</div>${note}`; return; }
+  const sum = (arr, a, b) => { let t = null; for (let i = a; i < b; i++) if (i >= 0 && arr[i] != null) t = (t || 0) + arr[i]; return t; };
+  const wavg = (a, b) => { let t = 0, w = 0; for (let i = Math.max(0, a); i < b; i++) if (L.py[i] != null) { t += L.py[i] * L.n[i]; w += L.n[i]; } return w ? t / w : null; };
+  const pyPrev = wavg(M.length - 24, M.length - 12), cp = chg(L.py12, pyPrev);
+  const n12p = sum(L.n, M.length - 24, M.length - 12);
+  const d84 = L.deals.find((d) => d[1] >= 80 && d[1] < 90);
+  const area = T.sgg?.[sido]?.[sgg];
+  const regPy = area ? (() => { const xs = area.py.slice(-12).filter((x) => x != null); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; })() : null;
+  el.innerHTML = `
+    <div class="ld-head">
+      <span class="ld-badge">대장</span>
+      <div><b class="ld-name">${esc(L.apt)}</b><div class="muted small-t">${esc(sgg)} ${esc(L.dong)}${L.by ? ` · ${L.by}년 준공` : ''}</div></div>
+    </div>
+    <div class="rs-kpis">
+      <div><span class="k">평당가 (최근 12개월)</span><b>${pyTxt(L.py12)}</b><span class="${cp.c}">1년 전 대비 ${L.py12 && pyPrev ? ((L.py12 >= pyPrev ? '+' : '−') + Math.abs((L.py12 / pyPrev - 1) * 100).toFixed(1) + '%') : '–'}</span></div>
+      <div><span class="k">84㎡대 최근 거래</span><b>${d84 ? fmtWon(d84[3]) : '–'}</b><span class="muted">${d84 ? `${d84[0].slice(2, 4)}.${d84[0].slice(4, 6)}.${d84[0].slice(6, 8)} · ${d84[2] ?? '-'}층` : ''}</span></div>
+      <div><span class="k">거래 건수 (최근 12개월)</span><b>${fmt(L.n12)}건</b><span class="muted">${regPy ? `${esc(sgg)} 평균 평당 ${fmt(Math.round(regPy))}만` : (n12p != null ? `전년 ${fmt(n12p)}건` : '')}</span></div>
+    </div>
+    <div class="mini-h">대장 아파트 평당가 추이 <span class="muted">(월 중위값, 만원/3.3㎡)</span></div>
+    <div class="chart" id="trPy"></div>
+    <div class="sub-h" style="margin-top:12px">${esc(L.apt)} 실거래 <span class="muted">최근 ${L.deals.length}건</span></div>
+    <div class="tr-wrap"><table class="tr-table"><thead><tr><th>계약일</th><th>전용</th><th>평형</th><th>층</th><th class="r">거래가</th><th class="r">평당</th></tr></thead><tbody>
+    ${L.deals.map((d) => `<tr><td>${d[0].slice(2, 4)}.${d[0].slice(4, 6)}.${d[0].slice(6, 8)}</td><td>${d[1]}㎡</td><td>${Math.round(d[1] * 1.3 / 3.3058)}평형</td><td>${d[2] ?? ''}</td><td class="r"><b>${fmtWon(d[3])}</b></td><td class="r">${fmt(Math.round(d[3] / d[1] * 3.3058))}만</td></tr>`).join('')}
+    </tbody></table></div>
+    ${L.next?.length ? `<div class="ld-next"><span class="muted">다음 순위</span> ${L.next.map(([a, d, py, n]) => `<span class="ld-chip"><b>${esc(a)}</b> ${esc(d)} · ${fmt(py)}만 · ${n}건</span>`).join('')}</div>` : ''}
+    ${note}`;
+  drawChart($('#trPy'), M, L.py, { height: 160, unit: '만', extremes: true, xTick: tick6, fit: true });
 }
 
 /* ---------- 개발 호재 ---------- */

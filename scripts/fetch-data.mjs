@@ -296,7 +296,7 @@ if (process.env.DATA_GO_KR_KEY) {
       const view = buildTradeView(r);
       await writeJSON(path.join(OUT, 'trade.json'), { source: '국토교통부 아파트 매매 실거래가(공공데이터포털)', fetchedAt: new Date().toISOString(), complete: r.complete, ...view });
     }
-    meta.trade = { ok: r.ok, error: r.error || undefined, complete: r.complete, done: r.done, fails: r.fails, remaining: r.remaining, callsToday: r.callsToday };
+    meta.trade = { ok: r.ok, error: r.error || undefined, complete: r.complete, upgrading: r.upgrading, done: r.done, fails: r.fails, remaining: r.remaining, callsToday: r.callsToday };
     log('실거래가', meta.trade);
     if (r.error) errors.push('실거래가: ' + r.error);
   } catch (e) { errors.push('실거래가: ' + e.message); meta.trade = { ok: false, error: e.message }; }
