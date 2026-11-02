@@ -355,11 +355,11 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
   .flow-table th, .flow-table td { padding: 6px 4px; }
   .flow-table th { white-space: normal; word-break: keep-all; line-height: 1.25; vertical-align: bottom; }
   .flow-table .fb { display: none; }
-  .flow-table col:nth-child(1) { width: 18% !important; }
-  .flow-table col:nth-child(2) { width: 10% !important; }
-  .flow-table col:nth-child(3) { width: 15% !important; }
-  .flow-table col:nth-child(4) { width: 10% !important; }
-  .flow-table col:nth-child(5) { width: 13% !important; }
-  .flow-table col:nth-child(6) { width: 16% !important; }
+  .flow-table col:nth-child(1) { width: 13% !important; }
+  .flow-table col:nth-child(2) { width: 11% !important; }
+  .flow-table col:nth-child(3) { width: 16% !important; }
+  .flow-table col:nth-child(4) { width: 11% !important; }
+  .flow-table col:nth-child(5) { width: 14% !important; }
+  .flow-table col:nth-child(6) { width: 17% !important; }
   .flow-table col:nth-child(7) { width: 18% !important; }
 }
