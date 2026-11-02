@@ -363,3 +363,5 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
   .flow-table col:nth-child(6) { width: 17% !important; }
   .flow-table col:nth-child(7) { width: 18% !important; }
 }
+.flow-table th, .flow-table th.r { text-align: center; }
+.flow-table td:first-child { text-align: center; }
