@@ -920,7 +920,7 @@ function renderTrade() {
   const L = T.leader?.[sido]?.[sgg];
   if (!L) { el.innerHTML = `<div class="empty">${esc(place)}의 대장 아파트 자료가 아직 없습니다.${T.leader && Object.keys(T.leader).length ? '' : ' 1~2일 안에 채워집니다.'}</div>${note}`; return; }
   const sum = (arr, a, b) => { let t = null; for (let i = a; i < b; i++) if (i >= 0 && arr[i] != null) t = (t || 0) + arr[i]; return t; };
-  const wavg = (a, b) => { let t = 0, w = 0; for (let i = Math.max(0, a); i < b; i++) if (L.py[i] != null) { t += L.py[i] * L.n[i]; w += L.n[i]; } return w ? t / w : null; };
+  const wavg = (a, b) => { let t = 0, w = 0, k = 0; for (let i = Math.max(0, a); i < b; i++) if (L.py[i] != null) { t += L.py[i] * L.n[i]; w += L.n[i]; k++; } return w && k >= 6 ? t / w : null; }; // 전년 자료가 6개월 이상 있을 때만 비교
   const pyPrev = wavg(M.length - 24, M.length - 12), cp = chg(L.py12, pyPrev);
   const n12p = sum(L.n, M.length - 24, M.length - 12);
   const d84 = L.deals.find((d) => d[1] >= 80 && d[1] < 90);
