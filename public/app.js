@@ -993,11 +993,11 @@ function renderProjects() {
   const card = (p) => {
     const regs = p.regions.map(([a, b]) => `<span class="rg-chip${(sgg ? a === sido && b === sgg : a === sido) ? ' on' : ''}">${esc(a === sido ? b : a + ' ' + b)}</span>`).join('');
     return `<div class="pj">
-      <div class="pj-top"><span class="pj-type">${esc(p.type)}</span><b class="pj-name">${esc(p.name)}</b><span class="pj-st ${PJ_STATUS_CLASS[p.status] || ''}">${esc(p.status)}</span></div>
+      <div class="pj-top"><span class="pj-type">${esc(p.type)}</span><a class="pj-name" href="${esc(p.source.url)}" target="_blank" rel="noopener">${esc(p.name)}</a><span class="pj-st ${PJ_STATUS_CLASS[p.status] || ''}">${esc(p.status)}</span></div>
       <div class="pj-sch">${esc(p.schedule)}</div>
       <div class="pj-desc">${esc(p.desc)}</div>
       <div class="pj-regs">${regs}</div>
-      <a class="pj-src" href="${esc(p.source.url)}" target="_blank" rel="noopener">출처: ${esc(p.source.title)} · ${esc(p.source.date)}</a>
+      <a class="pj-src" href="${esc(p.source.url)}" target="_blank" rel="noopener"><span class="pj-go">기사 보기 ↗</span><span class="pj-st-t">${esc(p.source.title)} · ${esc(p.source.date)}</span></a>
     </div>`;
   };
   const groups = PJ_GROUPS.map(([g, sds]) => {
