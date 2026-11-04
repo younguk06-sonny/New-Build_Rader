@@ -214,6 +214,7 @@ function renderMap() {
   const lastM = S.months[S.months.length - 1];
   let html = '';
   let items; // {f, s, key}
+  const hugD = [];
   if (!sido) {
     items = S.geo.sido.map((f) => ({ f, s: S.sido[f.sd], key: f.sd, label: f.sd, pop: popOf(f.sd) }));
   } else {
@@ -225,8 +226,10 @@ function renderMap() {
     const fill = S.metric === 'level' ? colorLevel(curVal(it.s), th) : S.metric === 'pop' ? colorLevel(it.pop, th) : colorMom(curVal(it.s), prevVal(it.s));
     const sel = sgg && it.key === sgg ? ' sel' : '';
     html += `<path class="rg${sel}" d="${it.f.d}" fill="${fill}" data-key="${esc(it.key)}"/>`;
+    if (sido && hugIs(sido, it.key)) hugD.push(it.f.d);
   }
   if (sido) { const o = S.geo.sido.find((f) => f.sd === sido); html += `<path class="outline" d="${o.d}"/>`; }
+  for (const d of hugD) html += `<path class="hugz" d="${d}"/>`;
   // 전국 지도: 확대하면 시·군·구 경계·이름표로 전환 (×${SGG_K} 이상)
   S.sggItems = null;
   if (!sido) {
@@ -238,6 +241,7 @@ function renderMap() {
       html += `<path class="rg sg" d="${it.f.d}" fill="${fill}" data-sd="${esc(it.sd)}" data-key="${esc(it.key)}"/>`;
     }
     for (const f of S.geo.sido) html += `<path class="outline" d="${f.d}"/>`;
+    for (const it of sItems) if (hugIs(it.sd, it.key)) html += `<path class="hugz" d="${it.f.d}"/>`;
     html += '</g>';
     S.sggItems = sItems; S.sggTh = sth; S.sidoTh = th;
   }
@@ -375,6 +379,7 @@ function renderLegend(th) {
   } else {
     el.innerHTML = `<span>전월 대비 증감률</span><div class="bar">${[-3,-2,-1,0,1,2,3].map((i) => `<i style="background:var(--d${i})"></i>`).join('')}</div><div class="ticks"><span>−15%</span><span>0</span><span>+15%</span></div>`;
   }
+  if (hugCur()) el.insertAdjacentHTML('beforeend', '<span class="lg-hug">┅ HUG 미분양관리지역</span>');
 }
 
 /* ---------- 지도 확대(돋보기) ---------- */
@@ -571,6 +576,7 @@ function renderHero() {
   $('#natVal').textContent = fmt(nat.at(-1)) + '호';
   $('#natChg').className = 'chg ' + nc.c; $('#natChg').textContent = nc.t;
   renderCrumb();
+  try { renderHug(); } catch (e) { console.error(e); }
 }
 
 function renderCrumb() {
@@ -1131,6 +1137,39 @@ function fromHash() {
   return [null, null];
 }
 
+/* ---------- HUG 미분양관리지역 ---------- */
+function hugCur() { return S.hug?.rounds?.[0] || null; }
+function hugIs(sd, sgg) { const r = hugCur(); return !!r && r.zones.some((z) => z.sd === sd && z.sgg === sgg); }
+function hugStreak(sd, sgg) { // 연속 지정 횟수와 첫 회차
+  let n = 0, first = null;
+  for (const r of S.hug?.rounds || []) { if (r.zones.some((z) => z.sd === sd && z.sgg === sgg)) { n++; first = r.round; } else break; }
+  return { n, first };
+}
+function renderHug() {
+  const el = $('#hug'); const r = hugCur();
+  if (!el) return; if (!r) { el.innerHTML = ''; return; }
+  const { sido, sgg } = S.sel;
+  const per = `${r.from.slice(2).replace(/-/g, '.')}~${r.to.slice(5).replace(/-/g, '.')}`;
+  const more = S.hug.rounds.length;
+  const head = `<a class="hug-t" href="${esc(S.hug.page)}" target="_blank" rel="noopener">HUG 미분양관리지역</a><span class="muted">${per}</span>`;
+  if (sgg) {
+    if (hugIs(sido, sgg)) {
+      const st = hugStreak(sido, sgg);
+      const z = r.zones.find((x) => x.sd === sido && x.sgg === sgg);
+      el.innerHTML = `<div class="hug-on">${head}<b>지정 중</b><span>${z.st === '신규' ? '이번 달 신규 지정' : `연속 ${st.n}회째${st.n >= more ? ' 이상' : ''} (${st.first.replace('-', '.')}~)`}</span></div>`;
+    } else {
+      const past = (S.hug.rounds || []).find((x) => x.zones.some((z) => z.sd === sido && z.sgg === sgg));
+      el.innerHTML = `<div class="hug-off">${head}<span>${past ? `해제 · 최근 지정 ${past.round.replace('-', '.')}` : '지정 아님'}</span></div>`;
+    }
+    return;
+  }
+  const list = r.zones.filter((z) => !sido || z.sd === sido);
+  const chips = list.map((z) => `<button class="hug-chip" data-sd="${esc(z.sd)}" data-g="${esc(z.sgg)}">${sido ? '' : esc(z.sd) + ' '}${esc(z.sgg)}${z.st === '신규' ? '<i>신규</i>' : ''}</button>`).join('');
+  const rm = (r.removed || []).filter((z) => !sido || z.sd === sido).map((z) => `${sido ? '' : z.sd + ' '}${z.sgg}`).join(', ');
+  el.innerHTML = `<div class="hug-all">${head}<span class="hug-n">${list.length}곳</span>${chips || '<span class="muted">이 시·도에는 지정된 곳이 없습니다</span>'}${rm ? `<span class="muted hug-rm">해제: ${esc(rm)}</span>` : ''}</div>`;
+  el.querySelectorAll('.hug-chip').forEach((b) => b.onclick = () => select(b.dataset.sd, b.dataset.g));
+}
+
 /* ---------- 휴대폰 탭 ---------- */
 const TAB_RENDER = { unsold: () => [renderTrend, renderFlow], cy: () => [renderCy], price: () => [renderTrade, renderRegion], supply: () => [renderSupply, renderPermit, renderProjects] };
 function setTab(t, rerender) {
@@ -1204,6 +1243,7 @@ async function init() {
     try { S.rs = await getJSON('data/region-stats.json'); } catch (_) { S.rs = null; }
     try { S.trade = await getJSON('data/trade.json'); } catch (_) { S.trade = null; }
     try { S.projects = await getJSON('data/projects.json'); } catch (_) { S.projects = null; }
+    try { S.hug = await getJSON('data/hug-zones.json'); } catch (_) { S.hug = null; }
   } catch (e) {
     $('#srcBadge').textContent = '데이터를 불러오지 못했습니다'; $('#srcBadge').classList.add('warn');
     console.error(e); return;

@@ -482,3 +482,19 @@ a.pj-name:hover { color: var(--link, var(--accent)); text-decoration: underline;
   .zoom svg { width: 17px; height: 17px; }
   .zlevel { position: absolute; top: 38px; right: 2px; }
 }
+
+/* HUG 미분양관리지역 */
+#map path.hugz { fill: none; stroke: #e5484d; stroke-width: 2.2; stroke-dasharray: 4 2.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+.hug { margin-top: 10px; }
+.hug > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px; padding: 8px 10px; border-radius: 10px; background: var(--bg); }
+.hug-t { font-weight: 700; color: var(--ink); text-decoration: none; }
+.hug-t:hover { text-decoration: underline; }
+.hug-t::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 2px dashed #e5484d; border-radius: 2px; vertical-align: -1px; }
+.hug-n { font-weight: 700; color: #d13438; }
+.hug-chip { border: 1px solid color-mix(in srgb, #e5484d 45%, var(--line)); background: var(--card); color: var(--ink); border-radius: 999px; padding: 2px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+.hug-chip:hover { background: color-mix(in srgb, #e5484d 10%, var(--card)); }
+.hug-chip i { font-style: normal; font-size: 10.5px; font-weight: 700; color: #d13438; margin-left: 4px; }
+.hug-rm { font-size: 11.5px; }
+.hug-on { background: color-mix(in srgb, #e5484d 10%, var(--bg)) !important; }
+.hug-on b { color: #d13438; }
+.lg-hug { color: #d13438; font-weight: 600; font-size: 10.5px; }
