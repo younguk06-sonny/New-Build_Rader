@@ -1129,6 +1129,43 @@ function fromHash() {
   return [null, null];
 }
 
+/* ---------- 지역 검색 ---------- */
+const SIDO_FULL = { 서울: '서울특별시', 부산: '부산광역시', 대구: '대구광역시', 인천: '인천광역시', 대전: '대전광역시', 울산: '울산광역시', 세종: '세종특별자치시', 경기: '경기도', 강원: '강원특별자치도', 충북: '충청북도', 충남: '충청남도', 전북: '전북특별자치도', 전남광주: '전남광주통합특별시 광주광역시 전라남도 광주 전남', 경북: '경상북도', 경남: '경상남도', 제주: '제주특별자치도' };
+function bindSearch() {
+  const inp = $('#q'), list = $('#qList');
+  const norm = (t) => String(t || '').replace(/\s+/g, '').toLowerCase();
+  const entries = [];
+  for (const f of S.geo.sido) entries.push({ sd: f.sd, sgg: null, name: f.sd, sub: '시·도', keys: [f.sd, ...(SIDO_FULL[f.sd] || '').split(' ')].map(norm) });
+  for (const f of S.geo.sgg) {
+    const base = f.n.replace(/(시|군|구)$/, '');
+    entries.push({ sd: f.sd, sgg: f.n, name: f.n, sub: f.sd, keys: [f.n, base].map(norm), combo: [f.sd, (SIDO_FULL[f.sd] || '').split(' ')[0]].map((x) => [norm(x), norm(x + f.n)]) });
+  }
+  let res = [], cur = -1;
+  const valOf = (e) => { const s = e.sgg ? S.sgg[e.sd]?.[e.sgg] : S.sido[e.sd]; const v = curVal(s); return v == null ? '' : `미분양 ${fmt(v)}호`; };
+  const close = () => { list.hidden = true; cur = -1; inp.setAttribute('aria-expanded', 'false'); };
+  const draw = () => {
+    list.innerHTML = res.length ? res.map((e, i) => `<li role="option" data-i="${i}" class="${i === cur ? 'on' : ''}"><b>${esc(e.name)}</b><span class="qs">${esc(e.sub)}</span><span class="qv">${valOf(e)}</span></li>`).join('') : '<li class="none">일치하는 지역이 없습니다</li>';
+    list.hidden = false; inp.setAttribute('aria-expanded', 'true');
+  };
+  const search = () => {
+    const q = norm(inp.value); if (!q) { close(); return; }
+    const score = (e) => { let b = 0; for (const [pre, k] of e.combo || []) if (q.length > pre.length && k.startsWith(q)) b = 3; for (const k of e.keys) { if (k === q) b = Math.max(b, 3); else if (k.startsWith(q)) b = Math.max(b, 2); else if (k.includes(q)) b = Math.max(b, 1); } return b; };
+    res = entries.map((e) => [e, score(e)]).filter((x) => x[1]).sort((a, b) => b[1] - a[1] || (a[0].sgg ? 1 : 0) - (b[0].sgg ? 1 : 0)).slice(0, 10).map((x) => x[0]);
+    cur = res.length ? 0 : -1; draw();
+  };
+  const pick = (e) => { if (!e) return; inp.value = ''; close(); inp.blur(); S.zoom && (S.zoom.k = 1); select(e.sd, e.sgg); $('.mapcard').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  inp.addEventListener('input', search);
+  inp.addEventListener('focus', () => { if (inp.value) search(); });
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' && res.length) { cur = (cur + 1) % res.length; draw(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp' && res.length) { cur = (cur - 1 + res.length) % res.length; draw(); e.preventDefault(); }
+    else if (e.key === 'Enter') { pick(res[cur] || res[0]); e.preventDefault(); }
+    else if (e.key === 'Escape') { close(); }
+  });
+  list.addEventListener('pointerdown', (e) => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); pick(res[+li.dataset.i]); } });
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.search')) close(); });
+}
+
 async function init() {
   try {
     const [geo, sup] = await Promise.all([getJSON('data/geo.json'), getJSON('data/supply.json').catch(() => null)]);
@@ -1150,6 +1187,7 @@ async function init() {
   setupAsOf();
   if (!S.pop) document.querySelector('[data-metric="pop"]').hidden = true; // 인구 자료가 아직 없으면 버튼 숨김
   bindMap();
+  bindSearch();
   $('#backBtn').onclick = () => select(S.sel.sgg ? S.sel.sido : null, null);
   document.querySelectorAll('#rangeSeg button').forEach((x) => x.onclick = () => { S.range = +x.dataset.range; document.querySelectorAll('#rangeSeg button').forEach((y) => y.classList.toggle('on', y === x)); renderTrend(); });
   $('#sortSel').onchange = (e) => { S.sort = e.target.value; renderCy(); };

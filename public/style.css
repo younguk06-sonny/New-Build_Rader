@@ -365,3 +365,15 @@ select { border: 1px solid var(--line); background: var(--card); border-radius: 
 }
 .flow-table th, .flow-table th.r { text-align: center; }
 .flow-table td:first-child { text-align: center; }
+
+/* 지역 검색 */
+.search { position: relative; margin: 10px 0 4px; }
+.search > svg { position: absolute; left: 11px; top: 50%; width: 17px; height: 17px; transform: translateY(-50%); fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+.search input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px; padding: 9px 12px 9px 34px; font: inherit; font-size: 14px; outline: none; }
+.search input:focus { border-color: var(--accent); background: var(--card); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.q-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.14); max-height: 320px; overflow: auto; }
+.q-list li { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 14px; }
+.q-list li.on, .q-list li:hover { background: var(--bg); }
+.q-list li .qs { color: var(--muted); font-size: 12px; }
+.q-list li .qv { margin-left: auto; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.q-list li.none { color: var(--muted); cursor: default; }
