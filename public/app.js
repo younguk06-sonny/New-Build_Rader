@@ -260,7 +260,7 @@ function renderMap() {
   // 이름표 배치: 모양 안에 들어가면 안쪽, 아니면 옆 여백에 세우고 선으로 연결
   const layout = (tg) => {
     // 좁은 화면은 옆 이름표 공간까지 고려해 지도를 정사각형 가까이 키움
-    const minH = bw < 520 ? Math.min(maxH, bw * 0.95) : Math.min(260, maxH);
+    const minH = bw < 520 ? Math.min(maxH, bw * (sido ? 0.88 : 0.95)) : Math.min(260, maxH);
     svg.style.height = Math.round(Math.max(minH, Math.min(maxH, bw * tg[3] / tg[2]))) + 'px';
     const box = svg.getBoundingClientRect();
     const scale = Math.max(tg[2] / (box.width || 600), tg[3] / (box.height || 600));
