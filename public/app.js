@@ -227,6 +227,20 @@ function renderMap() {
     html += `<path class="rg${sel}" d="${it.f.d}" fill="${fill}" data-key="${esc(it.key)}"/>`;
   }
   if (sido) { const o = S.geo.sido.find((f) => f.sd === sido); html += `<path class="outline" d="${o.d}"/>`; }
+  // 전국 지도: 확대하면 시·군·구 경계·이름표로 전환 (×${SGG_K} 이상)
+  S.sggItems = null;
+  if (!sido) {
+    const sItems = S.geo.sgg.map((f) => ({ f, sd: f.sd, s: S.sgg[f.sd]?.[f.n], key: f.n, label: f.n, pop: popOf(f.sd, f.n) }));
+    const sth = S.metric === 'pop' ? bins(sItems.map((x) => x.pop)) : bins(sItems.map((x) => curVal(x.s)));
+    html += '<g id="sggLayer" style="display:none">';
+    for (const it of sItems) {
+      const fill = S.metric === 'level' ? colorLevel(curVal(it.s), sth) : S.metric === 'pop' ? colorLevel(it.pop, sth) : colorMom(curVal(it.s), prevVal(it.s));
+      html += `<path class="rg sg" d="${it.f.d}" fill="${fill}" data-sd="${esc(it.sd)}" data-key="${esc(it.key)}"/>`;
+    }
+    for (const f of S.geo.sido) html += `<path class="outline" d="${f.d}"/>`;
+    html += '</g>';
+    S.sggItems = sItems; S.sggTh = sth; S.sidoTh = th;
+  }
 
   // 보기 영역
   const bb = sido ? S.geo.sido.find((f) => f.sd === sido).core : S.natBB;
@@ -334,7 +348,7 @@ function renderMap() {
   S.baseView = target;
   if (S.zoom && S.zoom.key === zkey && S.zoom.k > 1) { cancelAnimationFrame(S.raf); S.view = null; applyZoomNoLabel(); renderZoomLabels(); }
   else { S.zoom = { key: zkey, k: 1, cx: target[0] + target[2] / 2, cy: target[1] + target[3] / 2 }; animateView(svg, target); updateZoomUI(); }
-  renderLegend(th);
+  S.sggOn = null; syncSggLayer(); if (!S.sggItems) renderLegend(th);
   S.mapItems = new Map(items.map((x) => [x.key, x]));
 }
 
@@ -365,13 +379,21 @@ function renderLegend(th) {
 
 /* ---------- 지도 확대(돋보기) ---------- */
 const ZMAX = 8;
+const SGG_K = 2; // 전국 지도에서 이 배율 이상이면 시·군·구로 표시
+function sggMode() { return !S.sel.sido && !!S.sggItems && (S.zoom?.k || 1) >= SGG_K; }
+function syncSggLayer() {
+  const g = document.getElementById('sggLayer'); if (!g) return;
+  const on = sggMode(); if (S.sggOn === on && g.style.display === (on ? '' : 'none')) return;
+  S.sggOn = on; g.style.display = on ? '' : 'none';
+  renderLegend(on ? S.sggTh : S.sidoTh);
+}
 function applyZoomNoLabel() {
   const B = S.baseView, z = S.zoom; if (!B || !z) return;
   const w = B[2] / z.k, h = B[3] / z.k;
   z.cx = Math.max(B[0] + w / 2, Math.min(B[0] + B[2] - w / 2, z.cx));
   z.cy = Math.max(B[1] + h / 2, Math.min(B[1] + B[3] - h / 2, z.cy));
   const v = [z.cx - w / 2, z.cy - h / 2, w, h];
-  $('#map').setAttribute('viewBox', v.join(' ')); S.view = v; updateZoomUI();
+  $('#map').setAttribute('viewBox', v.join(' ')); S.view = v; updateZoomUI(); syncSggLayer();
 }
 function applyZoom() {
   const B = S.baseView, z = S.zoom; if (!B || !z) return;
@@ -381,14 +403,15 @@ function applyZoom() {
   z.cy = Math.max(B[1] + h / 2, Math.min(B[1] + B[3] - h / 2, z.cy));
   const v = [z.cx - w / 2, z.cy - h / 2, w, h];
   $('#map').setAttribute('viewBox', v.join(' ')); S.view = v;
-  updateZoomUI();
+  updateZoomUI(); syncSggLayer();
   cancelAnimationFrame(S.zraf); S.zraf = requestAnimationFrame(renderZoomLabels);
 }
 // 확대 중 이름표: 보이는 배율에 맞춘 글자 크기로, 들어가는 지역은 모두 안쪽에 표시
 function renderZoomLabels() {
   const g = document.getElementById('lbls'); if (!g || !S.lbl) return;
   if ((S.zoom?.k || 1) <= 1) { renderMap(); return; } // 원래 배치(옆 이름표 포함)로 복귀
-  const { items, valueText, basePx } = S.lbl, v = S.view;
+  const { valueText, basePx } = S.lbl, v = S.view;
+  const items = sggMode() ? S.sggItems : S.lbl.items;
   const sc = toMap(0, 0)[2], fs = basePx * sc, sw = (3 * sc).toFixed(3);
   const placed = []; let html = '';
   const vis = items.filter((it) => it.f.pole && it.f.pole[0] > v[0] && it.f.pole[0] < v[0] + v[2] && it.f.pole[1] > v[1] && it.f.pole[1] < v[1] + v[3]).sort((a, b) => b.f.rad - a.f.rad);
@@ -471,6 +494,7 @@ function bindMap() {
     if (S.dragMoved) { S.dragMoved = false; return; } // 끌어서 이동한 경우는 선택하지 않음
     const p = e.target.closest('path, rect.callout-hit');
     if (!p) return;
+    if (p.dataset.sd) return select(p.dataset.sd, p.dataset.key);
     if (p.dataset.sido) return select(p.dataset.sido, null);
     const k = p.dataset.key; if (!k) return;
     if (!S.sel.sido) select(k, null); else select(S.sel.sido, k === S.sel.sgg ? null : k);
@@ -480,10 +504,11 @@ function bindMap() {
     if (!p) { tip.hidden = true; return; }
     const r = wrap.getBoundingClientRect();
     let name, s, pop;
-    if (p.dataset.sido) { name = p.dataset.sido; s = S.sido[name]; pop = popOf(name); }
+    if (p.dataset.sd) { name = p.dataset.sd + ' ' + p.dataset.key; s = S.sgg[p.dataset.sd]?.[p.dataset.key]; pop = popOf(p.dataset.sd, p.dataset.key); }
+    else if (p.dataset.sido) { name = p.dataset.sido; s = S.sido[name]; pop = popOf(name); }
     else { const it = S.mapItems.get(p.dataset.key); name = (S.sel.sido ? S.sel.sido + ' ' : '') + it.key; s = it.s; pop = it.pop; }
     const c = chg(curVal(s), prevVal(s));
-    const sdK = p.dataset.sido || S.sel.sido || (p.dataset.key && !S.sel.sido ? p.dataset.key : null), sgK = !p.dataset.sido && S.sel.sido ? p.dataset.key : null;
+    const sdK = p.dataset.sd || p.dataset.sido || S.sel.sido || (p.dataset.key && !S.sel.sido ? p.dataset.key : null), sgK = p.dataset.sd ? p.dataset.key : (!p.dataset.sido && S.sel.sido ? p.dataset.key : null);
     const pjN = S.projects ? S.projects.projects.filter((q) => q.regions.some(([a, b]) => a === sdK && (!sgK || b === sgK))).length : 0;
     tip.innerHTML = `<b>${esc(name)}</b>${pjN ? ` <span class="tip-pj">개발 호재 ${pjN}</span>` : ''}<br>미분양 ${fmt(curVal(s))}호 · 전월 <span>${c.t}</span>${pop ? `<br>인구 ${fmt(pop)}명 · 1만 명당 미분양 ${(curVal(s) / pop * 1e4).toFixed(1)}호` : ''}`;
     tip.style.left = (e.clientX - r.left) + 'px'; tip.style.top = (e.clientY - r.top) + 'px';
