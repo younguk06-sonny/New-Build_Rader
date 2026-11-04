@@ -113,7 +113,7 @@ async function loadUnsold() {
   try {
     const j = await getJSON('data/unsold.json'); // GitHub Actions가 매일 KOSIS에서 받아 저장
     buildUnsold(j);
-    S.unsoldSrc = 'live';
+    S.unsoldSrc = 'live'; S.unsoldManual = /통계누리/.test(j.source || '');
   } catch (e) {
     const j = await getJSON('data/unsold-fallback.json');
     buildUnsold(j);
@@ -1119,7 +1119,7 @@ async function init() {
     console.error(e); return;
   }
   const b = $('#srcBadge');
-  if (S.unsoldSrc === 'live') b.textContent = `미분양 KOSIS · ${fmtM(S.months.at(-1))} · 매일 자동 갱신`;
+  if (S.unsoldSrc === 'live') b.textContent = `미분양 ${S.unsoldManual ? '국토부 통계누리' : 'KOSIS'} · ${fmtM(S.months.at(-1))} · 매일 자동 갱신`;
   else { b.textContent = `미분양 내장자료 · ${fmtM(S.months.at(-1))}`; b.classList.add('warn'); b.title = 'KOSIS 실시간 조회 실패: ' + (S.unsoldErr || ''); }
 
   setupAsOf();

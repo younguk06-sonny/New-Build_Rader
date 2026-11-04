@@ -87,9 +87,20 @@ if (process.env.KOSIS_KEY) {
       if (mi.has(p)) map.get(k)[2 + mi.get(p)] = v;
     }
     if (map.size < 50) throw new Error(`미분양 행이 너무 적음(${map.size}) · 항목 ${items.join('/')}`);
+    // KOSIS에 아직 없는 달은 통계누리 엑셀에서 옮긴 값(data-manual/unsold-manual.json)으로 먼저 채움
+    const manual = [];
+    try {
+      const man = JSON.parse(await fs.readFile(path.join(ROOT, 'data-manual', 'unsold-manual.json'), 'utf8'));
+      for (const m of Object.keys(man.months || {}).sort()) {
+        if (m <= months.at(-1)) continue;
+        months.push(m); manual.push(m);
+        const vals = new Map(man.months[m].rows.map(([a, b, v]) => [a + '|' + b, v]));
+        for (const [k, row] of map) row.push(vals.has(k) ? vals.get(k) : null);
+      }
+    } catch (e) { if (e.code !== 'ENOENT') log('수동 미분양 자료 오류:', e.message); }
     const fetchedAt = new Date().toISOString();
-    await writeJSON(path.join(OUT, 'unsold.json'), { source: `KOSIS ${KOSIS_SOURCES.unsold.tblId} ${j.tblNm}`, months, rows: [...map.values()], fetchedAt });
-    meta.unsold = { ok: true, at: fetchedAt, last: months.at(-1), rows: map.size, items, ...j.info };
+    await writeJSON(path.join(OUT, 'unsold.json'), { source: `KOSIS ${KOSIS_SOURCES.unsold.tblId} ${j.tblNm}${manual.length ? ` (${manual.map((m) => m.slice(0, 4) + '.' + m.slice(4)).join(', ')}은 국토부 통계누리)` : ''}`, months, rows: [...map.values()], fetchedAt });
+    meta.unsold = { ok: true, at: fetchedAt, last: months.at(-1), manual: manual.length ? manual : undefined, rows: map.size, items, ...j.info };
     log('미분양', months.at(-1), map.size, '행');
   } catch (e) { errors.push('미분양: ' + e.message); meta.unsold = { ok: false, error: e.message }; }
 
