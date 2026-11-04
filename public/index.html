@@ -70,7 +70,8 @@
       <h3 id="listTitle">시·도별 미분양</h3>
       <span id="listMonth" class="muted"></span>
     </div>
-    <ol id="rank" class="rank"></ol>
+    <ol id="rank" class="rank fold"></ol>
+    <button id="rankMore" class="ghost rank-more">전체 보기</button>
   </section>
 
   <section class="detail">
@@ -91,7 +92,14 @@
       </div>
     </div>
 
-    <div class="card">
+    <nav id="tabs" class="tabs" role="tablist" aria-label="보기 묶음">
+      <button data-tab="unsold" class="on">미분양</button>
+      <button data-tab="cy">청약</button>
+      <button data-tab="price">시세</button>
+      <button data-tab="supply">공급·호재</button>
+    </nav>
+
+    <div class="card" data-tab="unsold">
       <div class="sec-head">
         <h3>미분양 추이</h3>
         <div class="seg small" id="rangeSeg">
@@ -104,14 +112,22 @@
       <div id="trend" class="chart"></div>
     </div>
 
-    <div class="card" id="flowCard">
+    <div class="card" id="flowCard" data-tab="unsold">
       <div class="sec-head">
         <h3>월별 분양 · 미분양 <span class="muted">기준월까지 12개월</span></h3>
       </div>
       <div id="flow"></div>
     </div>
 
-    <div class="card" id="regionCard">
+    <div class="card" id="tradeCard" data-tab="price">
+      <div class="sec-head">
+        <h3>대장 아파트 실거래가 <span class="muted">최근 3년</span></h3>
+        <span id="trMeta" class="muted small-t"></span>
+      </div>
+      <div id="trBody"></div>
+    </div>
+
+    <div class="card" id="regionCard" data-tab="price">
       <div class="sec-head">
         <h3>지역 여건 <span class="muted">최근 5년</span></h3>
         <span id="rsMeta" class="muted small-t"></span>
@@ -121,15 +137,7 @@
       <div id="rsAge"></div>
     </div>
 
-    <div class="card" id="tradeCard">
-      <div class="sec-head">
-        <h3>대장 아파트 실거래가 <span class="muted">최근 3년</span></h3>
-        <span id="trMeta" class="muted small-t"></span>
-      </div>
-      <div id="trBody"></div>
-    </div>
-
-    <div class="card">
+    <div class="card" data-tab="supply">
       <div class="sec-head">
         <h3>향후 공급</h3>
         <span class="muted small-t">입주예정은 시·도 단위 자료</span>
@@ -138,7 +146,7 @@
       <div id="permit"></div>
     </div>
 
-    <div class="card" id="projCard">
+    <div class="card" id="projCard" data-tab="supply">
       <div class="sec-head">
         <h3>개발 호재 <span class="muted">광역교통·신도시·산업단지</span></h3>
         <span id="pjMeta" class="muted small-t"></span>
@@ -146,7 +154,7 @@
       <div id="pjBody"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="cyCard" data-tab="cy">
       <div class="sec-head">
         <div>
           <h3>청약 결과 <span class="muted">최근 3년</span></h3>

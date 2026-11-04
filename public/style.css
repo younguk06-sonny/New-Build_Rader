@@ -381,3 +381,86 @@ a.pj-name:hover { color: var(--link, var(--accent)); text-decoration: underline;
 .q-list li .qs { color: var(--muted); font-size: 12px; }
 .q-list li .qv { margin-left: auto; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .q-list li.none { color: var(--muted); cursor: default; }
+
+/* ---------- 휴대폰 압축 보기 ---------- */
+.tabs, .rank-more { display: none; }
+@media (max-width: 760px) {
+  body { font-size: 14px; }
+  .layout { gap: 10px; padding-top: 8px; }
+  .detail { gap: 10px; }
+  /* 머리말 한 줄로 */
+  .top { padding: 10px 12px 4px; gap: 8px; }
+  .top .sub, #srcBadge, .asof .k { display: none; }
+  .top h1 { font-size: 17px; }
+  .mark { width: 26px; height: 26px; border-radius: 8px; box-shadow: inset 0 0 0 5px var(--bg); }
+  .top-meta { gap: 8px; width: 100%; justify-content: space-between; flex-wrap: nowrap; }
+  .nat { white-space: nowrap; font-size: 12px; }
+  .nat b { font-size: 15px; }
+  .card { padding: 12px; border-radius: 12px; }
+  .sec-head { margin-bottom: 6px; }
+  .sec-head h3 { font-size: 15px; }
+  .zhint { display: none; }
+  .search { margin: 8px 0 2px; }
+  .search input { padding: 7px 10px 7px 32px; font-size: 13.5px; }
+  /* 순위 목록은 5개만, 버튼으로 펼침 */
+  .rank.fold li:nth-child(n+6) { display: none; }
+  .rank-more { display: block; width: 100%; margin-top: 6px; font-size: 12.5px; }
+  .rank { max-height: none; }
+  /* 요약 숫자 3칸은 한 줄로 */
+  .flow-kpis, .rs-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px; }
+  .flow-kpis > div, .rs-kpis > div { padding: 6px 8px; }
+  .flow-kpis b, .rs-kpis b { font-size: 13.5px; white-space: normal; word-break: keep-all; line-height: 1.25; }
+  .flow-kpis .k, .rs-kpis .k { font-size: 10.5px; }
+  .flow-kpis .s { font-size: 10px; }
+  .hero h2 { font-size: 20px; }
+  .kpi { padding: 8px 10px; }
+  .kpi b { font-size: 17px; }
+  .note { font-size: 11px; line-height: 1.45; }
+  /* 탭: 한 번에 한 묶음만 */
+  .tabs { display: flex; position: sticky; top: 0; z-index: 15; gap: 4px; padding: 6px; margin: 0 -2px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 12px; }
+  .tabs button { flex: 1; border: 0; background: var(--card); color: var(--ink-2); font: inherit; font-size: 13.5px; font-weight: 600; padding: 9px 4px; border-radius: 9px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .tabs button.on { background: var(--accent); color: #fff; }
+  .detail > .card[data-tab]:not(.tab-on) { display: none; }
+  .foot { display: none; }
+  .detail.show-foot .foot { display: block; }
+}
+.rank-more.gone { display: none !important; }
+@media (max-width: 760px) {
+  .nat .k, #natChg { display: none; }
+  .nat::before { content: '전국'; font-size: 11.5px; color: var(--muted); margin-right: 4px; }
+  .asof { padding: 3px; gap: 3px; }
+  .asof select { font-size: 13px; padding: 4px 6px; max-width: 132px; }
+  .asof .sq { width: 28px; height: 28px; }
+}
+@media (max-width: 760px) {
+  .ld-deals { font-size: 11px; }
+  .ld-deals th, .ld-deals td { padding: 5px 3px; }
+  .ld-deals th:nth-child(3), .ld-deals td:nth-child(3) { display: none; }
+  .hero-top { flex-wrap: nowrap; align-items: flex-start; }
+  #backBtn { flex: none; font-size: 12px; padding: 5px 9px; }
+  .hero .kpis { gap: 6px; margin-top: 8px; }
+  .hero .kpi { padding: 6px 10px; }
+  .hero .kpi .k { font-size: 11px; }
+  .hero .kpi b { font-size: 16px; }
+  .hero .kpi .muted { font-size: 10.5px; }
+  .dpop { font-size: 12px; }
+}
+.ty-d { grid-column: 1 / -1; margin-top: 4px; }
+.ty-d > summary { cursor: pointer; font-size: 12px; font-weight: 650; color: var(--link, var(--accent)); list-style: none; padding: 3px 0; }
+.ty-d > summary::-webkit-details-marker { display: none; }
+.ty-d > summary::before { content: '▸ '; }
+.ty-d[open] > summary::before { content: '▾ '; }
+@media (max-width: 760px) {
+  .cy-sum { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 6px; }
+  .cy-sum > div { padding: 6px 7px; }
+  .cy-sum .k { font-size: 10.5px; }
+  .cy-sum b { font-size: 14px; }
+  .ty table { font-size: 11px; }
+  .ty th, .ty td { padding: 4px 4px; }
+  .ty td:nth-child(3) { white-space: normal; }
+  .supply-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px; }
+  .sbox { padding: 8px; }
+  .sbox .k { font-size: 10.5px; }
+  .sbox b { font-size: 13px; white-space: nowrap; }
+  .sbox .s { font-size: 10px; }
+}

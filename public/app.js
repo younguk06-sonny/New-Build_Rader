@@ -534,6 +534,7 @@ function renderRank() {
   const max = Math.max(1, ...rows.map((r) => curVal(r.s) || 0));
   $('#listTitle').textContent = sido ? `${sido} 시·군·구별 미분양` : '시·도별 미분양';
   $('#listMonth').textContent = `${fmtM(S.months.at(-1))} 기준 · 호`;
+  { const m = $('#rankMore'); if (m) { m.classList.toggle('gone', rows.length <= 5); m.textContent = el.classList.contains('fold') ? `전체 ${rows.length}곳 보기` : '접기'; } }
   el.innerHTML = rows.map((r, i) => {
     const v = curVal(r.s), c = chg(v, prevVal(r.s), false);
     return `<li data-k="${esc(r.k)}" class="${sgg === r.k ? 'sel' : ''}"><span class="i">${i + 1}</span><span class="n">${esc(r.k)}</span><span class="b"><i style="width:${((v || 0) / max * 100).toFixed(1)}%"></i></span><span class="v">${fmt(v)}</span><span class="c ${c.c}">${c.t}</span></li>`;
@@ -964,7 +965,7 @@ function renderTrade() {
     <div class="mini-h">대장 아파트 평당가 추이 <span class="muted">(월 중위값, 만원/3.3㎡)</span></div>
     <div class="chart" id="trPy"></div>
     <div class="sub-h" style="margin-top:12px">${esc(L.apt)} 실거래 <span class="muted">최근 ${L.deals.length}건</span></div>
-    <div class="tr-wrap"><table class="tr-table"><thead><tr><th>계약일</th><th>전용</th><th>평형</th><th>층</th><th class="r">거래가</th><th class="r">평당</th></tr></thead><tbody>
+    <div class="tr-wrap"><table class="tr-table ld-deals"><thead><tr><th>계약일</th><th>전용</th><th>평형</th><th>층</th><th class="r">거래가</th><th class="r">평당</th></tr></thead><tbody>
     ${L.deals.map((d) => `<tr><td>${d[0].slice(2, 4)}.${d[0].slice(4, 6)}.${d[0].slice(6, 8)}</td><td>${d[1]}㎡</td><td>${Math.round(d[1] * 1.3 / 3.3058)}평형</td><td>${d[2] ?? ''}</td><td class="r"><b>${fmtWon(d[3])}</b></td><td class="r">${fmt(Math.round(d[3] / d[1] * 3.3058))}만</td></tr>`).join('')}
     </tbody></table></div>
     ${L.next?.length ? `<div class="ld-next"><span class="muted">다음 순위</span> ${L.next.map(([a, d, py, n]) => `<span class="ld-chip"><b>${esc(a)}</b> ${esc(d)} · ${fmt(py)}만 · ${n}건</span>`).join('')}</div>` : ''}
@@ -1067,7 +1068,8 @@ async function renderCy() {
       }
       const rng = (a, f) => { if (!a.length) return '–'; const lo = Math.min(...a), hi = Math.max(...a); return lo === hi || Math.abs(hi - lo) / hi < 0.005 ? f(lo) : `${f(lo)}~${f(hi)}`; };
       const rows = [...g.values()].sort((a, b) => a.ex - b.ex).map((o) => `<tr><td>${o.ex}㎡<span class="muted"> · ${o.sup.length ? Math.round(Math.max(...o.sup) / 3.3058) + '평' : ''}</span></td><td class="r">${fmt(o.hh)}세대</td><td class="r"><b>${rng(o.price, (v) => fmtWon(Math.round(v)))}</b></td><td class="r">${rng(o.py, (v) => fmt(Math.round(v)) + '만')}</td></tr>`).join('');
-      typesHtml = `<div class="ty"><table><thead><tr><th>전용 · 공급평형</th><th class="r">세대</th><th class="r">분양가(최고)</th><th class="r">평당가</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      const mob = window.matchMedia && matchMedia('(max-width: 760px)').matches;
+      typesHtml = `<details class="ty-d"${mob ? '' : ' open'}><summary>평형·분양가 <span class="muted">${g.size}개 면적</span></summary><div class="ty"><table><thead><tr><th>전용 · 공급평형</th><th class="r">세대</th><th class="r">분양가(최고)</th><th class="r">평당가</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
     }
     return `<div class="cy-item"><div class="nm">${nm}${chip}</div><div class="rate">${rateHtml}</div><div class="meta">${!sgg && it.sgg ? esc(it.sgg) + ' · ' : ''}${esc(it.date || '')} 공고 · ${fmt(it.total)}세대${it.kind ? ' · ' + esc(it.kind) : ''}${it.mvn ? ' · 입주 ' + esc(fmtM(String(it.mvn))) : ''}</div>${typesHtml}</div>`;
   };
@@ -1129,6 +1131,32 @@ function fromHash() {
   return [null, null];
 }
 
+/* ---------- 휴대폰 탭 ---------- */
+const TAB_RENDER = { unsold: () => [renderTrend, renderFlow], cy: () => [renderCy], price: () => [renderTrade, renderRegion], supply: () => [renderSupply, renderPermit, renderProjects] };
+function setTab(t, rerender) {
+  S.tab = t;
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+  document.querySelectorAll('.detail > .card[data-tab]').forEach((c) => c.classList.toggle('tab-on', c.dataset.tab === t));
+  document.querySelector('.detail').classList.toggle('show-foot', t === 'supply');
+  try { localStorage.setItem('br.tab', t); } catch (_) {}
+  // 숨겨져 있던 카드의 그래프는 폭이 0이라 보이게 된 뒤 다시 그림
+  if (rerender) for (const fn of TAB_RENDER[t]()) { try { fn(); } catch (e) { console.error(e); } }
+}
+function bindTabs() {
+  let t = 'unsold'; try { t = localStorage.getItem('br.tab') || t; } catch (_) {}
+  if (!TAB_RENDER[t]) t = 'unsold';
+  setTab(t, false);
+  const nav = $('#tabs');
+  nav.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-tab]'); if (!b || b.dataset.tab === S.tab) return;
+    setTab(b.dataset.tab, true);
+    const top = nav.getBoundingClientRect().top;
+    if (top < 0 || top > window.innerHeight * 0.6) nav.scrollIntoView({ block: 'start' });
+  });
+  const more = $('#rankMore'), rank = $('#rank');
+  more.onclick = () => { const f = rank.classList.toggle('fold'); more.textContent = f ? `전체 ${rank.children.length}곳 보기` : '접기'; };
+}
+
 /* ---------- 지역 검색 ---------- */
 const SIDO_FULL = { 서울: '서울특별시', 부산: '부산광역시', 대구: '대구광역시', 인천: '인천광역시', 대전: '대전광역시', 울산: '울산광역시', 세종: '세종특별자치시', 경기: '경기도', 강원: '강원특별자치도', 충북: '충청북도', 충남: '충청남도', 전북: '전북특별자치도', 전남광주: '전남광주통합특별시 광주광역시 전라남도 광주 전남', 경북: '경상북도', 경남: '경상남도', 제주: '제주특별자치도' };
 function bindSearch() {
@@ -1188,6 +1216,7 @@ async function init() {
   if (!S.pop) document.querySelector('[data-metric="pop"]').hidden = true; // 인구 자료가 아직 없으면 버튼 숨김
   bindMap();
   bindSearch();
+  bindTabs();
   $('#backBtn').onclick = () => select(S.sel.sgg ? S.sel.sido : null, null);
   document.querySelectorAll('#rangeSeg button').forEach((x) => x.onclick = () => { S.range = +x.dataset.range; document.querySelectorAll('#rangeSeg button').forEach((y) => y.classList.toggle('on', y === x)); renderTrend(); });
   $('#sortSel').onchange = (e) => { S.sort = e.target.value; renderCy(); };
