@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a74d6"/><stop offset="1" stop-color="#0b2f6b"/>
+    </linearGradient>
+    <radialGradient id="sweep" cx="256" cy="232" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9fd0ff" stop-opacity=".0"/><stop offset="1" stop-color="#9fd0ff" stop-opacity=".55"/>
+    </radialGradient>
+    <clipPath id="disc"><circle cx="256" cy="232" r="150"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(256 262) scale(1.12) translate(-256 -239)">
+  <g fill="none" stroke="#cfe6ff" stroke-opacity=".38" stroke-width="5">
+    <circle cx="256" cy="232" r="150"/><circle cx="256" cy="232" r="100"/><circle cx="256" cy="232" r="50"/>
+    <path d="M256 82v300M106 232h300" stroke-opacity=".22"/>
+  </g>
+  <!-- 레이더 스윕 -->
+  <path d="M256 232 L256 82 A150 150 0 0 1 384 154 Z" fill="url(#sweep)"/>
+  <path d="M256 232 L384 154" stroke="#e6f3ff" stroke-width="6" stroke-linecap="round"/>
+  <!-- 아파트 실루엣 -->
+  <g clip-path="url(#disc)">
+    <g fill="#ffffff">
+      <rect x="150" y="250" width="52" height="140" rx="4"/>
+      <rect x="212" y="196" width="60" height="194" rx="4"/>
+      <rect x="282" y="230" width="52" height="160" rx="4"/>
+      <rect x="344" y="276" width="40" height="114" rx="4"/>
+    </g>
+    <g fill="#1d5fb8">
+      <rect x="164" y="270" width="10" height="10"/><rect x="180" y="270" width="10" height="10"/>
+      <rect x="164" y="292" width="10" height="10"/><rect x="180" y="292" width="10" height="10"/>
+      <rect x="164" y="314" width="10" height="10"/><rect x="180" y="314" width="10" height="10"/>
+      <rect x="226" y="216" width="11" height="11"/><rect x="247" y="216" width="11" height="11"/>
+      <rect x="226" y="240" width="11" height="11"/><rect x="247" y="240" width="11" height="11"/>
+      <rect x="226" y="264" width="11" height="11"/><rect x="247" y="264" width="11" height="11"/>
+      <rect x="226" y="288" width="11" height="11"/><rect x="247" y="288" width="11" height="11"/>
+      <rect x="296" y="250" width="10" height="10"/><rect x="314" y="250" width="10" height="10"/>
+      <rect x="296" y="272" width="10" height="10"/><rect x="314" y="272" width="10" height="10"/>
+      <rect x="296" y="294" width="10" height="10"/><rect x="314" y="294" width="10" height="10"/>
+      <rect x="354" y="294" width="8" height="9"/><rect x="368" y="294" width="8" height="9"/>
+    </g>
+  </g>
+  <!-- 포착 점 -->
+  <circle cx="340" cy="178" r="13" fill="#ff6b5b"/>
+  <circle cx="340" cy="178" r="24" fill="none" stroke="#ff6b5b" stroke-opacity=".5" stroke-width="5"/>
+  <!-- 바닥 -->
+  <rect x="106" y="388" width="300" height="8" rx="4" fill="#cfe6ff" fill-opacity=".6"/>
+  </g>
+</svg>
