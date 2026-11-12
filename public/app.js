@@ -204,6 +204,10 @@ function colorMom(cur, prev) {
 
 // 인구 (주민등록인구, 최신 월)
 function popOf(sido, sgg) { const P = S.pop; if (!P) return null; return sgg ? (P.sgg?.[sido]?.[sgg] ?? null) : (sido ? (P.sido?.[sido] ?? null) : Object.values(P.sido || {}).reduce((a, b) => a + b, 0) || null); }
+function incSeries(sd, sgg) { const I = S.inc; if (!I) return null; return sgg ? (I.sgg?.[sd]?.[sgg] || null) : sd ? (I.sido?.[sd] || null) : I.nat; }
+function incOf(sd, sgg) { const o = incSeries(sd, sgg); return o ? o.avg.at(-1) : null; }
+function mVal(sd, sgg) { return S.metric === 'inc' ? incOf(sd, sgg) : popOf(sd, sgg); }
+const popLike = () => S.metric === 'pop' || S.metric === 'inc';
 function fmtPop(v) { if (v == null) return '–'; if (v >= 10000) { const m = v / 10000; return (m >= 100 ? Math.round(m).toLocaleString('ko-KR') : m.toFixed(1)) + '만'; } return fmt(v); }
 function curVal(s) { return s ? s[s.length - 1] : null; }
 function prevVal(s) { return s ? s[s.length - 2] : null; }
@@ -216,14 +220,14 @@ function renderMap() {
   let items; // {f, s, key}
   const hugD = [];
   if (!sido) {
-    items = S.geo.sido.map((f) => ({ f, s: S.sido[f.sd], key: f.sd, label: f.sd, pop: popOf(f.sd) }));
+    items = S.geo.sido.map((f) => ({ f, s: S.sido[f.sd], key: f.sd, label: f.sd, pop: mVal(f.sd) }));
   } else {
-    items = S.geo.sgg.filter((f) => f.sd === sido).map((f) => ({ f, s: S.sgg[sido][f.n], key: f.n, label: f.n, pop: popOf(sido, f.n) }));
+    items = S.geo.sgg.filter((f) => f.sd === sido).map((f) => ({ f, s: S.sgg[sido][f.n], key: f.n, label: f.n, pop: mVal(sido, f.n) }));
     for (const f of S.geo.sido) if (f.sd !== sido) html += `<path class="rg fade" d="${f.d}" data-sido="${esc(f.sd)}"/>`;
   }
-  const th = S.metric === 'pop' ? bins(items.map((x) => x.pop)) : bins(items.map((x) => curVal(x.s)));
+  const th = popLike() ? bins(items.map((x) => x.pop)) : bins(items.map((x) => curVal(x.s)));
   for (const it of items) {
-    const fill = S.metric === 'level' ? colorLevel(curVal(it.s), th) : S.metric === 'pop' ? colorLevel(it.pop, th) : colorMom(curVal(it.s), prevVal(it.s));
+    const fill = S.metric === 'level' ? colorLevel(curVal(it.s), th) : popLike() ? colorLevel(it.pop, th) : colorMom(curVal(it.s), prevVal(it.s));
     const sel = sgg && it.key === sgg ? ' sel' : '';
     html += `<path class="rg${sel}" d="${it.f.d}" fill="${fill}" data-key="${esc(it.key)}"/>`;
     if (sido && hugIs(sido, it.key)) hugD.push(it.f.d);
@@ -233,11 +237,11 @@ function renderMap() {
   // 전국 지도: 확대하면 시·군·구 경계·이름표로 전환 (×${SGG_K} 이상)
   S.sggItems = null;
   if (!sido) {
-    const sItems = S.geo.sgg.map((f) => ({ f, sd: f.sd, s: S.sgg[f.sd]?.[f.n], key: f.n, label: f.n, pop: popOf(f.sd, f.n) }));
-    const sth = S.metric === 'pop' ? bins(sItems.map((x) => x.pop)) : bins(sItems.map((x) => curVal(x.s)));
+    const sItems = S.geo.sgg.map((f) => ({ f, sd: f.sd, s: S.sgg[f.sd]?.[f.n], key: f.n, label: f.n, pop: mVal(f.sd, f.n) }));
+    const sth = popLike() ? bins(sItems.map((x) => x.pop)) : bins(sItems.map((x) => curVal(x.s)));
     html += '<g id="sggLayer" style="display:none">';
     for (const it of sItems) {
-      const fill = S.metric === 'level' ? colorLevel(curVal(it.s), sth) : S.metric === 'pop' ? colorLevel(it.pop, sth) : colorMom(curVal(it.s), prevVal(it.s));
+      const fill = S.metric === 'level' ? colorLevel(curVal(it.s), sth) : popLike() ? colorLevel(it.pop, sth) : colorMom(curVal(it.s), prevVal(it.s));
       html += `<path class="rg sg" d="${it.f.d}" fill="${fill}" data-sd="${esc(it.sd)}" data-key="${esc(it.key)}"/>`;
     }
     for (const f of S.geo.sido) html += `<path class="outline" d="${f.d}"/>`;
@@ -258,6 +262,7 @@ function renderMap() {
   const valueText = (it) => {
     // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0), 인구 모드는 인구
     if (S.metric === 'pop') return { t: fmtPop(it.pop), c: '' };
+    if (S.metric === 'inc') return { t: it.pop ? fmt(it.pop) + '만' : '–', c: '' };
     const mc = S.metric === 'mom' ? chg(curVal(it.s), prevVal(it.s), false) : null;
     return { t: mc ? mc.t : fmt(curVal(it.s)), c: mc ? ' ' + mc.c : '' };
   };
@@ -372,7 +377,9 @@ function animateView(svg, target) {
 
 function renderLegend(th) {
   const el = $('#legend');
-  if (S.metric === 'pop') {
+  if (S.metric === 'inc') {
+    el.innerHTML = `<span>근로자 평균 총급여 (${esc(S.inc?.years?.at(-1) || '')}년, 만원)</span><div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>낮음</span><span>${fmt(th[2])}</span><span>${fmt(th[5])}+</span></div>`;
+  } else if (S.metric === 'pop') {
     el.innerHTML = `<span>주민등록인구 (${esc(fmtM(S.pop?.month || ''))})</span><div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>적음</span><span>${fmtPop(th[2])}</span><span>${fmtPop(th[5])}+</span></div>`;
   } else if (S.metric === 'level') {
     el.innerHTML = `<span>미분양 호수 (${fmtM(S.months.at(-1))})</span><div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>적음</span><span>${fmt(th[2])}</span><span>${fmt(th[5])}+</span></div>`;
@@ -592,7 +599,7 @@ function renderCrumb() {
 /* ---------- 차트 ---------- */
 function niceMax(v) { if (v <= 0) return 10; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
 
-function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호', extremes = false, xTick = null, fit = false } = {}) {
+function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호', extremes = false, xTick = null, fit = false, label = null } = {}) {
   const W = Math.max(280, el.clientWidth || 600), H = height;
   const m = { l: 44, r: 10, t: extremes ? 30 : 12, b: 24 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
@@ -657,7 +664,7 @@ function drawChart(el, months, vals, { type = 'line', height = 200, unit = '호'
     cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
     if (v != null && type === 'line') { hv.setAttribute('cx', x(i)); hv.setAttribute('cy', y(v)); hv.setAttribute('visibility', 'visible'); } else hv.setAttribute('visibility', 'hidden');
     tip.hidden = false; tip.style.left = (x(i) / W * r.width) + 'px';
-    tip.textContent = `${fmtM(months[i])}  ${fmt(v)}${unit}`;
+    tip.textContent = `${(label || fmtM)(months[i])}  ${fmt(v)}${unit}`;
   };
   svg.onmouseleave = () => { cross.setAttribute('visibility', 'hidden'); hv.setAttribute('visibility', 'hidden'); tip.hidden = true; };
 }
@@ -886,6 +893,8 @@ function renderRegion() {
     if (pop) drawChart($('#popChart'), pop.months, pop.vals, { height: 140, unit: '명', xTick: yearTick, extremes: true, fit: true });
     if (hh) drawChart($('#hhChart'), hh.months, hh.vals, { height: 140, unit: '세대', xTick: yearTick, extremes: true, fit: true });
   } else $('#rsPop').innerHTML = '';
+  // 소득: 근로자 1인당 평균 총급여
+  try { renderIncome(place); } catch (e) { console.error(e); }
   // 3) 연령 분포
   const A = S.rs.age;
   let arr = null;
@@ -1137,6 +1146,31 @@ function fromHash() {
   return [null, null];
 }
 
+/* ---------- 소득 ---------- */
+function renderIncome(place) {
+  const el = $('#rsInc'); if (!el) return;
+  const I = S.inc, { sido, sgg } = S.sel;
+  if (!I) { el.innerHTML = ''; return; }
+  const o = incSeries(sido, sgg);
+  if (!o) { el.innerHTML = `<div class="sub-h">근로자 평균 급여</div><div class="empty">이 지역의 소득 자료가 없습니다.</div>`; return; }
+  const Y = I.years, now = o.avg.at(-1), prev = o.avg.at(-2), nat = I.nat?.avg.at(-1);
+  const yoy = now && prev ? (now / prev - 1) * 100 : null;
+  // 순위: 시·군·구는 같은 시·도 안에서, 시·도는 전국 17곳 중
+  let rank = '';
+  if (sgg) { const list = Object.entries(I.sgg[sido] || {}).map(([k, v]) => [k, v.avg.at(-1)]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]); const i = list.findIndex((x) => x[0] === sgg); if (i >= 0) rank = `${list.length}곳 중 ${i + 1}위`; }
+  else if (sido) { const list = Object.entries(I.sido).map(([k, v]) => [k, v.avg.at(-1)]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]); const i = list.findIndex((x) => x[0] === sido); if (i >= 0) rank = `시·도 ${list.length}곳 중 ${i + 1}위`; }
+  const ratio = now && nat ? Math.round(now / nat * 100) : null;
+  el.innerHTML = `<div class="sub-h"><span>근로자 평균 급여 <span class="muted">${esc(place)} · ${Y.at(-1)}년 귀속 · 사는 곳 기준</span></span></div>
+    <div class="rs-kpis">
+      <div><span class="k">1인당 평균 총급여</span><b>${fmt(now)}만원</b><span class="muted">${yoy == null ? '' : `전년 ${yoy >= 0 ? '+' : '−'}${Math.abs(yoy).toFixed(1)}%`}</span></div>
+      <div><span class="k">전국 평균 대비</span><b>${ratio != null ? ratio + '%' : '–'}</b><span class="muted">전국 ${fmt(nat)}만원</span></div>
+      <div><span class="k">${sgg || sido ? '순위' : '근로자 수'}</span><b>${sgg || sido ? (rank || '–') : fmtPop(o.n.at(-1)) + '명'}</b><span class="muted">${(sgg || sido) && !o.shared && o.n.at(-1) ? `근로자 ${fmtPop(o.n.at(-1))}명` : ''}</span></div>
+    </div>
+    <div class="chart" id="incChart"></div>
+    <p class="note">국세청 근로소득 연말정산 신고(주소지 기준) 과세대상 근로소득(총급여) ÷ 신고 인원입니다. 사업·임대소득은 빠져 있습니다.${o.shared ? ' 2026.07 인천 행정구역 개편 전 자료라 옛 구(중구·동구·서구) 값을 나눠 쓰지 못하고 그대로 보여 줍니다.' : ''}</p>`;
+  drawChart($('#incChart'), Y, o.avg, { height: 140, type: 'bar', unit: '만원', extremes: false, fit: true, xTick: (y) => `${y.slice(2)}년`, label: (y) => `${y}년` });
+}
+
 /* ---------- HUG 미분양관리지역 ---------- */
 function hugCur() { return S.hug?.rounds?.[0] || null; }
 function hugIs(sd, sgg) { const r = hugCur(); return !!r && r.zones.some((z) => z.sd === sd && z.sgg === sgg); }
@@ -1244,6 +1278,7 @@ async function init() {
     try { S.trade = await getJSON('data/trade.json'); } catch (_) { S.trade = null; }
     try { S.projects = await getJSON('data/projects.json'); } catch (_) { S.projects = null; }
     try { S.hug = await getJSON('data/hug-zones.json'); } catch (_) { S.hug = null; }
+    try { S.inc = await getJSON('data/income.json'); } catch (_) { S.inc = null; }
   } catch (e) {
     $('#srcBadge').textContent = '데이터를 불러오지 못했습니다'; $('#srcBadge').classList.add('warn');
     console.error(e); return;

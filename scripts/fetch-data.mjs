@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchSeries, fetchByFirstClass, search, call as kosisCall, meta as kosisMeta } from '../lib/kosis.mjs';
 import { KOSIS_SOURCES, SUPPLY_SOURCES, POPULATION_SOURCE } from '../lib/sources.mjs';
+import { fetchIncome } from '../lib/income.mjs';
 import { REGION_TABLES, monthlySeries, ageProfile } from '../lib/regionstats.mjs';
 import { collectTrades, buildTradeView } from '../lib/trade.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
@@ -146,6 +147,14 @@ if (process.env.KOSIS_KEY) {
     log('연령', rs.age.month, '시·군·구', nS);
   } catch (e) { errors.push('연령: ' + e.message); meta.regionStats.age = { ok: false, error: e.message }; }
   if (Object.keys(rs.series).length || rs.age) await writeJSON(path.join(OUT, 'region-stats.json'), rs);
+
+  // 소득: 시·군·구별 근로자 1인당 평균 총급여(국세청 연말정산, 주소지)
+  try {
+    const inc = await fetchIncome(VALID);
+    await writeJSON(path.join(OUT, 'income.json'), { fetchedAt: new Date().toISOString(), ...inc.data });
+    meta.income = { ok: true, ...inc.info, missingCount: inc.info.missing.length, missing: inc.info.missing.slice(0, 20) };
+    log('소득', inc.info.years.join('~'), '빠짐', inc.info.missing.length);
+  } catch (e) { errors.push('소득: ' + e.message); meta.income = { ok: false, error: e.message }; }
 
   // 인구: 최신 1개월, 시·도와 시·군·구별 총인구
   try {
