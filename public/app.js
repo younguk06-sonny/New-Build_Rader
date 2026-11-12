@@ -206,8 +206,8 @@ function colorMom(cur, prev) {
 function popOf(sido, sgg) { const P = S.pop; if (!P) return null; return sgg ? (P.sgg?.[sido]?.[sgg] ?? null) : (sido ? (P.sido?.[sido] ?? null) : Object.values(P.sido || {}).reduce((a, b) => a + b, 0) || null); }
 function incSeries(sd, sgg) { const I = S.inc; if (!I) return null; return sgg ? (I.sgg?.[sd]?.[sgg] || null) : sd ? (I.sido?.[sd] || null) : I.nat; }
 function incOf(sd, sgg) { const o = incSeries(sd, sgg); return o ? o.avg.at(-1) : null; }
-function mVal(sd, sgg) { return S.metric === 'inc' ? incOf(sd, sgg) : popOf(sd, sgg); }
-const popLike = () => S.metric === 'pop' || S.metric === 'inc';
+function mVal(sd, sgg) { return S.metric === 'inc' ? incOf(sd, sgg) : S.metric === 'cy' ? (cyOf(sd, sgg)?.units || null) : popOf(sd, sgg); }
+const popLike = () => S.metric === 'pop' || S.metric === 'inc' || S.metric === 'cy';
 function fmtPop(v) { if (v == null) return '–'; if (v >= 10000) { const m = v / 10000; return (m >= 100 ? Math.round(m).toLocaleString('ko-KR') : m.toFixed(1)) + '만'; } return fmt(v); }
 function curVal(s) { return s ? s[s.length - 1] : null; }
 function prevVal(s) { return s ? s[s.length - 2] : null; }
@@ -263,6 +263,7 @@ function renderMap() {
     // 미분양 호수 모드는 호수, 전월 대비 모드는 증감분(+3, −12, ±0), 인구 모드는 인구
     if (S.metric === 'pop') return { t: fmtPop(it.pop), c: '' };
     if (S.metric === 'inc') return { t: it.pop ? fmt(it.pop) + '만' : '–', c: '' };
+    if (S.metric === 'cy') { const o = it.sd ? cyOf(it.sd, it.key) : S.sel.sido ? cyOf(S.sel.sido, it.key) : cyOf(it.key, null); return { t: o && o.n ? `${o.n}건·${fmt(o.units)}` : '', c: '' }; }
     const mc = S.metric === 'mom' ? chg(curVal(it.s), prevVal(it.s), false) : null;
     return { t: mc ? mc.t : fmt(curVal(it.s)), c: mc ? ' ' + mc.c : '' };
   };
@@ -377,7 +378,14 @@ function animateView(svg, target) {
 
 function renderLegend(th) {
   const el = $('#legend');
-  if (S.metric === 'inc') {
+  if (S.metric === 'cy') {
+    const m = S.cyMonth, ms = S.cyMonths || [], i = ms.indexOf(m);
+    const t = cyOf(S.sel.sido, S.sel.sgg);
+    el.innerHTML = `<span class="cy-lg"><button class="cy-mv" data-d="-1" ${i <= 0 ? 'disabled' : ''} aria-label="이전 달">‹</button><b>${m ? fmtM(m) : '–'} 청약</b><button class="cy-mv" data-d="1" ${i < 0 || i >= ms.length - 1 ? 'disabled' : ''} aria-label="다음 달">›</button></span>
+      <span class="cy-tot">${t && t.n ? `${fmt(t.n)}건 · ${fmt(t.units)}세대${t.supply ? ` · 1순위 평균 ${(t.r1 / t.supply).toFixed(1)}:1` : ''}${t.su ? ` · <span class="up">미달 ${fmt(t.su)}세대</span>` : ''}` : '이 달 청약 없음'}</span>
+      <div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>적음</span><span>${fmt(th[2])}</span><span>${fmt(th[5])}+ 세대</span></div>`;
+    el.querySelectorAll('.cy-mv').forEach((b) => b.onclick = () => { const j = ms.indexOf(S.cyMonth) + +b.dataset.d; if (ms[j]) { S.cyMonth = ms[j]; renderMap(); } });
+  } else if (S.metric === 'inc') {
     el.innerHTML = `<span>근로자 평균 총급여 (${esc(S.inc?.years?.at(-1) || '')}년, 만원)</span><div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>낮음</span><span>${fmt(th[2])}</span><span>${fmt(th[5])}+</span></div>`;
   } else if (S.metric === 'pop') {
     el.innerHTML = `<span>주민등록인구 (${esc(fmtM(S.pop?.month || ''))})</span><div class="bar">${[0,1,2,3,4,5,6].map((i) => `<i style="background:var(--s${i})"></i>`).join('')}</div><div class="ticks"><span>적음</span><span>${fmtPop(th[2])}</span><span>${fmtPop(th[5])}+</span></div>`;
@@ -522,13 +530,18 @@ function bindMap() {
     const c = chg(curVal(s), prevVal(s));
     const sdK = p.dataset.sd || p.dataset.sido || S.sel.sido || (p.dataset.key && !S.sel.sido ? p.dataset.key : null), sgK = p.dataset.sd ? p.dataset.key : (!p.dataset.sido && S.sel.sido ? p.dataset.key : null);
     const pjN = S.projects ? S.projects.projects.filter((q) => q.regions.some(([a, b]) => a === sdK && (!sgK || b === sgK))).length : 0;
-    tip.innerHTML = `<b>${esc(name)}</b>${pjN ? ` <span class="tip-pj">개발 호재 ${pjN}</span>` : ''}<br>미분양 ${fmt(curVal(s))}호 · 전월 <span>${c.t}</span>${pop ? `<br>인구 ${fmt(pop)}명 · 1만 명당 미분양 ${(curVal(s) / pop * 1e4).toFixed(1)}호` : ''}`;
+    pop = popOf(sdK, sgK);
+    let extra = '';
+    if (S.metric === 'inc') { const v = incOf(sdK, sgK); if (v) extra = `<br>근로자 평균 총급여 ${fmt(v)}만원 (${S.inc.years.at(-1)}년)`; }
+    if (S.metric === 'cy') { const o = cyOf(sdK, sgK); extra = `<br>${fmtM(S.cyMonth)} 청약 ` + (o && o.n ? `${o.n}건 · ${fmt(o.units)}세대${o.supply ? ` · 1순위 ${(o.r1 / o.supply).toFixed(1)}:1` : ''}${o.su ? ` · 미달 ${fmt(o.su)}세대` : ''}` : '없음'); }
+    tip.innerHTML = `<b>${esc(name)}</b>${pjN ? ` <span class="tip-pj">개발 호재 ${pjN}</span>` : ''}<br>미분양 ${fmt(curVal(s))}호 · 전월 <span>${c.t}</span>${pop ? `<br>인구 ${fmt(pop)}명 · 1만 명당 미분양 ${(curVal(s) / pop * 1e4).toFixed(1)}호` : ''}${extra}`;
     tip.style.left = (e.clientX - r.left) + 'px'; tip.style.top = (e.clientY - r.top) + 'px';
     tip.hidden = false;
   });
   svg.addEventListener('mouseleave', () => { tip.hidden = true; });
   document.querySelectorAll('[data-metric]').forEach((b) => b.addEventListener('click', () => {
     S.metric = b.dataset.metric;
+    if (S.metric === 'cy' && !S.cyAgg) { ensureCyAgg().then(() => { if (S.metric === 'cy') renderMap(); }); }
     document.querySelectorAll('[data-metric]').forEach((x) => x.classList.toggle('on', x === b));
     renderMap();
   }));
@@ -804,6 +817,32 @@ async function loadCy(sd) {
   const d = (window.PRELOAD_CY && window.PRELOAD_CY[sd]) || await getJSON(`data/cheongyak/${encodeURIComponent(sd)}.json`);
   S.cy.set(sd, d); return d;
 }
+// 월별·지역별 청약 집계 (임대 제외, 공고월 기준)
+async function ensureCyAgg() {
+  if (S.cyAgg) return S.cyAgg;
+  const lists = await Promise.all(ORDER.map((sd) => loadCy(sd).catch(() => null)));
+  const agg = new Map(); const months = new Set();
+  const add = (k, m, it) => {
+    let byM = agg.get(k); if (!byM) agg.set(k, byM = new Map());
+    const o = byM.get(m) || { n: 0, units: 0, supply: 0, r1: 0, su: 0 };
+    o.n++; o.units += it.total || 0;
+    if (it.comp && it.comp.supply > 0) { o.supply += it.comp.supply; o.r1 += it.comp.r1 || 0; o.su += it.comp.shortUnits || 0; }
+    byM.set(m, o);
+  };
+  ORDER.forEach((sd, idx) => {
+    for (const it of lists[idx]?.items || []) {
+      if (/임대/.test(it.kind || '')) continue;
+      const m = String(it.date || '').replace(/-/g, '').slice(0, 6); if (!m) continue;
+      months.add(m); add('', m, it); add(sd, m, it); if (it.sgg) add(sd + '|' + it.sgg, m, it);
+    }
+  });
+  S.cyAgg = agg; S.cyMonths = [...months].sort();
+  const now = new Date(Date.now() + 9 * 3600e3), cm = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  S.cyMonth = S.cyMonths.filter((m) => m < cm).at(-1) || S.cyMonths.at(-1); // 기본은 지난달(경쟁률까지 나온 달)
+  return agg;
+}
+function cyOf(sd, sgg) { if (!S.cyAgg || !S.cyMonth) return null; const k = sgg ? sd + '|' + sgg : (sd || ''); return S.cyAgg.get(k)?.get(S.cyMonth) || null; }
+
 async function renderFlow() {
   const el = $('#flow'), { sido, sgg } = S.sel;
   const sds = sido ? [sido] : ORDER;

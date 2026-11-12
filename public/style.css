@@ -498,3 +498,10 @@ a.pj-name:hover { color: var(--link, var(--accent)); text-decoration: underline;
 .hug-on { background: color-mix(in srgb, #e5484d 10%, var(--bg)) !important; }
 .hug-on b { color: #d13438; }
 .lg-hug { color: #d13438; font-weight: 600; font-size: 10.5px; }
+
+/* 지도 청약 보기 */
+.cy-lg { display: inline-flex; align-items: center; gap: 6px; }
+.cy-lg b { color: var(--ink); font-size: 12px; }
+.cy-mv { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; padding: 0; font-size: 14px; line-height: 1; }
+.cy-mv:disabled { opacity: .35; cursor: default; }
+.cy-tot { font-size: 11.5px; color: var(--ink-2); }
