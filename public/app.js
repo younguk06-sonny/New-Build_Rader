@@ -1168,7 +1168,7 @@ function renderIncome(place) {
     </div>
     <div class="chart" id="incChart"></div>
     <p class="note">국세청 근로소득 연말정산 신고(주소지 기준) 과세대상 근로소득(총급여) ÷ 신고 인원입니다. 사업·임대소득은 빠져 있습니다.${o.shared ? ' 2026.07 인천 행정구역 개편 전 자료라 옛 구(중구·동구·서구) 값을 나눠 쓰지 못하고 그대로 보여 줍니다.' : ''}</p>`;
-  drawChart($('#incChart'), Y, o.avg, { height: 140, type: 'bar', unit: '만원', extremes: false, fit: true, xTick: (y) => `${y.slice(2)}년`, label: (y) => `${y}년` });
+  drawChart($('#incChart'), Y, o.avg, { height: 140, unit: '만원', extremes: false, fit: true, xTick: (y) => `${y.slice(2)}년`, label: (y) => `${y}년` });
 }
 
 /* ---------- HUG 미분양관리지역 ---------- */
