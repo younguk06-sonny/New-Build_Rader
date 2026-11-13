@@ -3,7 +3,7 @@
 // 필요한 환경변수(GitHub 저장소 Settings → Secrets and variables → Actions):
 //   DATA_GO_KR_KEY  공공데이터포털 '청약홈 분양정보'·'청약 경쟁률' Decoding 키
 //   KOSIS_KEY       KOSIS OpenAPI 키
-// 결과: public/data/unsold.json, permit.json, cheongyak/<시도>.json, meta.json
+// 결과: public/data/unsold.json, permit.json, cheongyak/<시도>.json, officetel/<시도>.json, meta.json
 //       cache/comp.json (경쟁률 캐시 — 이미 받은 단지는 다시 묻지 않음)
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -305,6 +305,87 @@ if (key) {
   } catch (e) { errors.push('청약: ' + e.message); meta.cheongyak = { ...(meta.cheongyak || {}), ok: false, error: e.message }; }
 } else {
   log('DATA_GO_KR_KEY 없음 — 청약 건너뜀');
+}
+
+/* ---------- 청약홈: 오피스텔·도시형생활주택·민간임대·생활숙박시설 (정비맵 '분양' 탭용) ---------- */
+// 같은 '청약홈 분양정보' 서비스라 DATA_GO_KR_KEY 하나로 조회됨. 실패해도 다른 자료에는 영향 없음.
+const OFC_DETAIL = '/ApplyhomeInfoDetailSvc/v1/getUrbtyOfctlLttotPblancDetail';
+const OFC_MDL = '/ApplyhomeInfoDetailSvc/v1/getUrbtyOfctlLttotPblancMdl';
+const OFC_CMPET = '/ApplyhomeInfoCmpetRtSvc/v1/getUrbtyOfctlLttotPblancCmpet';
+const pick = (r, ...ks) => { for (const k of ks) if (r[k] != null && r[k] !== '') return r[k]; return null; };
+const day = (v) => { const s = String(v || '').replace(/[^0-9]/g, ''); return s.length >= 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : null; };
+if (key) {
+  try {
+    const fromD = new Date(); fromD.setFullYear(fromD.getFullYear() - YEARS);
+    const from = ymd(fromD);
+    let rows;
+    try { rows = await paged(key, OFC_DETAIL, { 'cond[RCRIT_PBLANC_DE::GTE]': from }); }
+    catch (e) { log('오피스텔 날짜 조건 실패 → 전체 조회:', e.message); rows = await paged(key, OFC_DETAIL, {}); }
+    const seen = new Set();
+    rows = rows.filter((r) => { const id = r.PBLANC_NO || r.HOUSE_MANAGE_NO; if (!id || seen.has(id)) return false; seen.add(id); const d = day(r.RCRIT_PBLANC_DE); return !d || d >= from; });
+    if (rows[0]) meta.ofcSample = Object.keys(rows[0]);
+    log('오피스텔 등 공고', rows.length, '건');
+    // 주택형(타입별 전용·분양가·세대수) — 한 번만 받음
+    const OM = path.join(ROOT, 'cache', 'ofc-mdl.json');
+    const om = await readJSON(OM, {});
+    const needM = rows.filter((r) => !om[r.HOUSE_MANAGE_NO || r.PBLANC_NO]);
+    let mf = 0;
+    await pool(needM, 4, async (r) => {
+      const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO;
+      try {
+        const ms = await paged(key, OFC_MDL, { 'cond[HOUSE_MANAGE_NO::EQ]': id });
+        if (ms[0] && !meta.ofcMdlSample) meta.ofcMdlSample = Object.keys(ms[0]);
+        // [전용㎡, 공급㎡(없으면 null), 최고 분양가(만원), 세대수, 타입명]
+        om[id] = ms.map((x) => [num(pick(x, 'EXCLUSE_AR', 'EXCLUSE_AREA', 'HOUSE_TY')), num(pick(x, 'SUPLY_AR', 'SUPLY_AREA')), num(pick(x, 'SUPLY_AMOUNT', 'LTTOT_TOP_AMOUNT')), num(pick(x, 'SUPLY_HSHLDCO')) || 0, String(pick(x, 'TP', 'HOUSE_TY') || '')]).filter((t) => t[0]);
+      } catch (e) { mf++; }
+    });
+    // 경쟁률(접수 건수 ÷ 공급 세대) — 최근 공고만 다시 확인
+    const OC = path.join(ROOT, 'cache', 'ofc-comp.json');
+    const oc = await readJSON(OC, {});
+    const recent = ymd(new Date(Date.now() - RECHECK_DAYS * 864e5));
+    const needC = rows.filter((r) => { const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO; return !oc[id] || (day(r.RCRIT_PBLANC_DE) || '') >= recent; });
+    let cf = 0;
+    await pool(needC, 4, async (r) => {
+      const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO;
+      try {
+        const cs = await paged(key, OFC_CMPET, { 'cond[HOUSE_MANAGE_NO::EQ]': id });
+        if (cs[0] && !meta.ofcCompSample) meta.ofcCompSample = Object.keys(cs[0]);
+        let req = 0, sup = 0;
+        for (const x of cs) { req += num(pick(x, 'REQ_CNT', 'RCEPT_CNT')) || 0; sup += num(pick(x, 'SUPLY_HSHLDCO')) || 0; }
+        oc[id] = { at: ymd(new Date()), req, sup, rate: sup ? Math.round(req / sup * 100) / 100 : null };
+      } catch (e) { cf++; }
+    });
+    const ids = new Set(rows.map((r) => r.HOUSE_MANAGE_NO || r.PBLANC_NO));
+    for (const c of [om, oc]) for (const id of Object.keys(c)) if (!ids.has(id)) delete c[id];
+    await writeJSON(OM, om); await writeJSON(OC, oc);
+    const bySido = Object.fromEntries(SIDOS.map((s) => [s, []]));
+    let unmatched = 0;
+    for (const r of rows) {
+      const reg = parseRegion(r.HSSPLY_ADRES, r.SUBSCRPT_AREA_CODE_NM, VALID);
+      if (!reg.sido || !bySido[reg.sido]) { unmatched++; continue; }
+      const id = r.HOUSE_MANAGE_NO || r.PBLANC_NO;
+      const url = pick(r, 'PBLANC_URL', 'HMPG_ADRES');
+      bySido[reg.sido].push({
+        id, name: r.HOUSE_NM, addr: r.HSSPLY_ADRES, sgg: reg.sgg,
+        date: day(r.RCRIT_PBLANC_DE), rcept: day(pick(r, 'SUBSCRPT_RCEPT_BGNDE', 'RCEPT_BGNDE')), rceptEnd: day(pick(r, 'SUBSCRPT_RCEPT_ENDDE', 'RCEPT_ENDDE')),
+        winner: day(r.PRZWNER_PRESNATN_DE), contract: day(pick(r, 'CNTRCT_CNCLS_BGNDE')),
+        total: num(r.TOT_SUPLY_HSHLDCO),
+        kind: pick(r, 'HOUSE_DTL_SECD_NM', 'HOUSE_SECD_NM') || '오피스텔',
+        builder: pick(r, 'CNSTRCT_ENTRPS_NM', 'BSNS_MBY_NM') || '',
+        mvn: pick(r, 'MVN_PREARNGE_YM') || null,
+        url: /^https?:\/\//.test(url || '') ? url : (url ? 'http://' + url : null),
+        comp: oc[id] ? { rate: oc[id].rate, req: oc[id].req } : null,
+        types: om[id] || null,
+      });
+    }
+    const fetchedAt = new Date().toISOString();
+    for (const [sd, items] of Object.entries(bySido)) {
+      items.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      await writeJSON(path.join(OUT, 'officetel', `${sd}.json`), { sido: sd, from, fetchedAt, items });
+    }
+    meta.officetel = { ok: true, at: fetchedAt, from, notices: rows.length, unmatched, typeFails: mf, compFails: cf };
+    log('오피스텔 등 저장 완료 · 지역 미배정', unmatched, '· 주택형 실패', mf, '· 경쟁률 실패', cf);
+  } catch (e) { meta.officetel = { ok: false, error: e.message }; log('오피스텔 수집 실패(다른 자료에는 영향 없음):', e.message); }
 }
 
 /* ---------- 국토교통부 아파트 매매 실거래가 ---------- */
