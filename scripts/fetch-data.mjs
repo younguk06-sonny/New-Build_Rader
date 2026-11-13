@@ -13,6 +13,7 @@ import { KOSIS_SOURCES, SUPPLY_SOURCES, POPULATION_SOURCE } from '../lib/sources
 import { fetchIncome } from '../lib/income.mjs';
 import { REGION_TABLES, monthlySeries, ageProfile } from '../lib/regionstats.mjs';
 import { collectTrades, buildTradeView } from '../lib/trade.mjs';
+import { collectRents } from '../lib/rent.mjs';
 import { summarizeCompetition } from '../lib/competition.mjs';
 import { parseRegion } from '../lib/region.mjs';
 import { getJSON, pool } from '../lib/http.mjs';
@@ -401,6 +402,16 @@ if (process.env.DATA_GO_KR_KEY) {
     log('실거래가', meta.trade);
     if (r.error) errors.push('실거래가: ' + r.error);
   } catch (e) { errors.push('실거래가: ' + e.message); meta.trade = { ok: false, error: e.message }; }
+}
+
+/* ---------- 국토교통부 아파트 전월세 실거래가 (정비맵 '전세가' 탭용, 실패해도 다른 자료엔 영향 없음) ---------- */
+if (process.env.DATA_GO_KR_KEY) {
+  try {
+    const codes = await readJSON(path.join(ROOT, 'lib', 'lawd-codes.json'), {});
+    const r = await collectRents({ root: ROOT, codes, log });
+    meta.rent = { ok: r.ok, error: r.error || undefined, complete: r.complete, done: r.done, fails: r.fails, remaining: r.remaining, callsToday: r.callsToday };
+    log('전월세', meta.rent);
+  } catch (e) { meta.rent = { ok: false, error: e.message }; log('전월세 수집 실패:', e.message); }
 }
 
 await writeJSON(path.join(OUT, 'meta.json'), meta);
